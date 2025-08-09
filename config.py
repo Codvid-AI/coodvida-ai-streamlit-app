@@ -12,7 +12,9 @@ class Config:
     API_BASE_URLS = {
         "development": "https://codvid-ai-backend-development.up.railway.app",
         "production": "https://codvid-ai-backend-production.up.railway.app", 
-        "local": "http://localhost:8080"
+        "local": "http://localhost:8080",
+        # Added to match demo notebooks
+        "betamale": "https://codvid-ai-backend-betamale.up.railway.app"
     }
     
     # Default environment - can be changed via environment variable

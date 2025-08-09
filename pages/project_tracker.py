@@ -102,6 +102,13 @@ def show_project_tracker(api_client):
                         st.session_state.editing_reel_task_id = task['_id']
                         st.session_state.editing_reel_current_interval = current_interval
                         st.rerun()
+                    
+                    if st.button("🗑️ Delete", key=f"delete_reel_{task['_id']}"):
+                        if hasattr(api_client, 'delete_reel_task') and api_client.delete_reel_task(task['_id']):
+                            st.success("Reel task deleted!")
+                            st.rerun()
+                        else:
+                            st.error("Failed to delete reel task")
                 
                 # Show reel data if available
                 reel_data = task.get('reel_data', {})

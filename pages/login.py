@@ -19,6 +19,8 @@ def show_login(api_client):
                 if email and password:
                     with st.spinner("Logging in..."):
                         if api_client.login(email, password):
+                            # Persist session token for next run cycle
+                            st.session_state.session_token = api_client.session_token
                             st.session_state.authenticated = True
                             st.session_state.current_page = 'dashboard'
                             st.success("Login successful!")

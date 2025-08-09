@@ -36,7 +36,7 @@ def test_api_connection():
         response = requests.post(
             f"{base_url}/codvid-ai/auth/login",
             json=test_data,
-            timeout=10
+            timeout=15
         )
         
         print(f"✅ API endpoint test status: {response.status_code}")

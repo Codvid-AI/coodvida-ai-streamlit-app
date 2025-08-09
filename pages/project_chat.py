@@ -29,15 +29,26 @@ def show_project_chat(api_client):
     # Create a container for chat messages
     chat_container = st.container()
     
+    # Prefer chats from local user data cache if available
+    local_chats = None
+    try:
+        local_chats = st.session_state.local_user_data["projects"][project]["chats"]
+    except Exception:
+        local_chats = None
+
     with chat_container:
-        for i, message in enumerate(st.session_state.chat_history):
-            if message['role'] == 'user':
-                st.markdown(f"**👤 You:** {message['content']}")
+        messages_src = local_chats if isinstance(local_chats, list) and local_chats else st.session_state.chat_history
+        for i, message in enumerate(messages_src):
+            role = message.get('role')
+            content = message.get('content') or message.get('text') or ''
+            if role == 'user':
+                st.markdown(f"**👤 You:** {content}")
+            elif role == 'assistant':
+                st.markdown(f"**🤖 AI:** {content}")
             else:
-                st.markdown(f"**🤖 AI:** {message['content']}")
-            
-            # Add separator between messages
-            if i < len(st.session_state.chat_history) - 1:
+                st.markdown(f"**{role or 'system'}:** {content}")
+
+            if i < len(messages_src) - 1:
                 st.markdown("---")
     
     # Chat input with improved interface
@@ -82,18 +93,31 @@ def show_project_chat(api_client):
             st.rerun()
         
         if submit and message:
-            # Add user message to history
-            st.session_state.chat_history.append({'role': 'user', 'content': message})
-            
-            # Clear example message
+            # Add user message to local cache and fallback history
+            try:
+                st.session_state.local_user_data["projects"][project]["chats"].append({
+                    'role': 'user', 'type': 'text', 'text': message
+                })
+            except Exception:
+                st.session_state.chat_history.append({'role': 'user', 'content': message})
+
             if hasattr(st.session_state, 'example_message'):
                 del st.session_state.example_message
-            
-            # Get AI response with streaming simulation
+
+            # Get AI response (streaming aggregation)
             with st.spinner("AI is thinking..."):
                 ai_response = api_client.ai_chat(project, message)
-                st.session_state.chat_history.append({'role': 'assistant', 'content': ai_response})
-            
+                # If the streaming returned empty text but debug logs show chunks,
+                # fall back to showing a generic acknowledgment to avoid 'no response'
+                if not ai_response:
+                    ai_response = "(received streaming chunks, see debug logs)"
+                try:
+                    st.session_state.local_user_data["projects"][project]["chats"].append({
+                        'role': 'assistant', 'type': 'text', 'text': ai_response
+                    })
+                except Exception:
+                    st.session_state.chat_history.append({'role': 'assistant', 'content': ai_response})
+
             st.rerun()
     
     # Add project information

@@ -56,6 +56,8 @@ def show_projects_page(api_client):
                 with col2:
                     if st.button("💬 Chat", key=f"chat_{project}"):
                         st.session_state.current_project = project
+                        # Ensure project loaded in cache for chat view
+                        api_client.ensure_project_loaded(project)
                         st.session_state.current_page = 'project_chat'
                         st.rerun()
                 with col3:

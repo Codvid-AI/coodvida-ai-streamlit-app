@@ -118,14 +118,27 @@ def show_profile_details(api_client):
     # Get detailed task data
     task_details = api_client.get_task_details(profile['_id'])
     
-    if task_details and task_details.get('posts'):
+    # Support both 'posts', 'scraped_posts', and nested 'target_profile_data.scraped_posts'
+    posts_list = None
+    if task_details:
+        posts_list = (
+            task_details.get('posts')
+            or task_details.get('scraped_posts')
+            or task_details.get('target_profile_data', {}).get('scraped_posts')
+        )
+    
+    if posts_list:
         st.subheader("📈 Recent Posts Analysis")
-        
-        posts = task_details['posts']
+        posts = posts_list
         
         # Create metrics
-        total_likes = sum(post.get('likes', 0) for post in posts)
-        total_comments = sum(post.get('comments_count', 0) for post in posts)
+        def get_like_count(p):
+            return p.get('likes', p.get('likes_count', 0))
+        def get_comment_count(p):
+            return p.get('comments_count', p.get('comments', 0))
+
+        total_likes = sum(get_like_count(post) for post in posts)
+        total_comments = sum(get_comment_count(post) for post in posts)
         avg_likes = total_likes / len(posts) if posts else 0
         avg_comments = total_comments / len(posts) if posts else 0
         
@@ -144,16 +157,84 @@ def show_profile_details(api_client):
         st.subheader("📋 Recent Posts")
         posts_data = []
         for post in posts[:10]:  # Show last 10 posts
+            caption = post.get('caption', '')
+            if caption and len(caption) > 100:
+                caption = caption[:100] + '...'
             posts_data.append({
-                'Caption': post.get('caption', '')[:100] + '...' if len(post.get('caption', '')) > 100 else post.get('caption', ''),
-                'Likes': post.get('likes', 0),
-                'Comments': post.get('comments_count', 0),
+                'Caption': caption,
+                'Likes': get_like_count(post),
+                'Comments': get_comment_count(post),
                 'Date': datetime.fromtimestamp(post.get('timestamp', 0)).strftime('%Y-%m-%d') if post.get('timestamp') else 'Unknown'
             })
         
         if posts_data:
             df = pd.DataFrame(posts_data)
             st.dataframe(df, use_container_width=True)
+
+        # Per-post comments and sentiment details
+        st.subheader("💬 Comments & Sentiment (per post)")
+        emoji_map = Config.SENTIMENT_CONFIG["emoji_map"]
+        for idx, post in enumerate(posts[:10]):
+            caption_full = post.get('caption', '') or ''
+            date_str = (
+                datetime.fromtimestamp(post.get('timestamp', 0)).strftime('%Y-%m-%d %H:%M')
+                if post.get('timestamp') else 'Unknown'
+            )
+            header = f"Post {idx+1} • {date_str}"
+            with st.expander(header, expanded=False):
+                # Basic metrics
+                colm1, colm2, colm3, colm4 = st.columns(4)
+                with colm1:
+                    st.metric("Likes", f"{get_like_count(post):,}")
+                with colm2:
+                    st.metric("Comments", f"{get_comment_count(post):,}")
+                with colm3:
+                    views = post.get('video_view_count', 0)
+                    if views:
+                        st.metric("Views", f"{views:,}")
+                with colm4:
+                    st.metric("Type", post.get('type', 'Unknown'))
+
+                st.markdown("**Caption:**")
+                st.write(caption_full)
+
+                # Sentiment from top_comments
+                top_comments = post.get('top_comments', []) or []
+                if top_comments:
+                    counts = {"positive": 0, "negative": 0, "neutral": 0}
+                    for c in top_comments:
+                        s = (c.get('sentiment') or 'neutral').lower()
+                        if s not in counts:
+                            s = 'neutral'
+                        counts[s] += 1
+                    total = sum(counts.values()) or 1
+                    percentages = {k: (v / total) * 100 for k, v in counts.items()}
+
+                    colc1, colc2 = st.columns([1, 1])
+                    with colc1:
+                        st.markdown("**Sentiment Summary:**")
+                        for s in ["positive", "neutral", "negative"]:
+                            emoji = emoji_map.get(s, "😐")
+                            st.markdown(f"{emoji} {s.capitalize()}: {counts[s]} ({percentages[s]:.1f}%)")
+                    with colc2:
+                        try:
+                            fig = px.pie(values=list(counts.values()), names=list(counts.keys()), title="Sentiment")
+                            st.plotly_chart(fig, use_container_width=True)
+                        except Exception:
+                            pass
+
+                    st.markdown("**Top Comments:**")
+                    for c in top_comments:
+                        s = (c.get('sentiment') or 'neutral').lower()
+                        emoji = emoji_map.get(s, "😐")
+                        username = c.get('owner_username', 'unknown')
+                        text = c.get('text', '')
+                        likes = c.get('likes_count', 0)
+                        ts = c.get('timestamp')
+                        ts_str = datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M') if ts else 'Unknown'
+                        st.markdown(f"{emoji} **@{username}** ({ts_str})  |  ❤️ {likes}\n\n{text}")
+                else:
+                    st.info("No top comments available for this post.")
         
         # Sentiment analysis with improved visualization
         sentiment_summary = api_client.get_sentiment_summary(profile['_id'])

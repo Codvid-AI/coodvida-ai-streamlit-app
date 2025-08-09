@@ -82,8 +82,8 @@ def show_dashboard(api_client):
     current_env = Config.get_environment()
     new_env = st.sidebar.selectbox(
         "API Environment:",
-        options=["development", "local", "production"],
-        index=["development", "local", "production"].index(current_env)
+        options=["development", "local", "production", "betamale"],
+        index=["development", "local", "production", "betamale"].index(current_env) if current_env in ["development", "local", "production", "betamale"] else 0
     )
     
     if new_env != current_env:
