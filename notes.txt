@@ -1,0 +1,7 @@
+test accountL:
+watermelon@g.com
+watermelon12345
+
+
+run server:
+streamlit run main.py
