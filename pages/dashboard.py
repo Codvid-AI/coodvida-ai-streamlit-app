@@ -134,6 +134,38 @@ def show_dashboard(api_client):
                 else:
                     st.error("Please enter a profile name")
     
+    # Current task status (always visible if tasks exist)
+    if tasks:
+        st.subheader("⏱️ Current Profile Task Status")
+        # Build options mapping
+        id_to_label = {t['_id']: f"@{t.get('target_profile','unknown')} ({'Competitor' if t.get('is_competitor') else 'Own'})" for t in tasks}
+        ids = list(id_to_label.keys())
+        labels = list(id_to_label.values())
+        # Pick current selection
+        selected_profile_task_id = st.session_state.get('monitor_profile_task_id')
+        try:
+            current_idx = ids.index(selected_profile_task_id) if selected_profile_task_id in ids else 0
+        except Exception:
+            current_idx = 0
+        choice = st.selectbox("Choose a task to monitor:", options=labels, index=current_idx)
+        for tid, lbl in id_to_label.items():
+            if lbl == choice:
+                st.session_state.monitor_profile_task_id = tid
+                selected_profile_task_id = tid
+                break
+        # Show status
+        status = api_client.get_task_status(selected_profile_task_id)
+        if status:
+            if status.get('is_processing'):
+                st.info("⏳ Task is processing...")
+                latest_event = status.get('latest_event')
+                if latest_event:
+                    st.caption(f"Latest: {latest_event.get('event_type','event')} at {datetime.fromtimestamp(latest_event.get('timestamp',0)).strftime('%Y-%m-%d %H:%M:%S')}")
+            else:
+                st.success("✅ Task is idle/completed")
+        else:
+            st.warning("⚠️ Unable to fetch task status.")
+
     # Smart task selector section
     st.header("🎯 Smart Task Selection")
     st.markdown("Select a task for quick actions:")
@@ -147,6 +179,7 @@ def show_dashboard(api_client):
                 with st.spinner("Scraping profile data..."):
                     if api_client.force_scrape_task(selected_task_id):
                         st.success("Scraping initiated successfully!")
+                        st.session_state.monitor_profile_task_id = selected_task_id
                         st.rerun()
                     else:
                         st.error("Failed to initiate scraping")
@@ -161,6 +194,7 @@ def show_dashboard(api_client):
                         break
                 
                 if selected_task:
+                    st.session_state.monitor_profile_task_id = selected_task_id
                     st.session_state.current_profile = selected_task
                     st.session_state.current_page = 'profile_details'
                     st.rerun()

@@ -489,10 +489,17 @@ class APIClient:
         result = self._make_request(f"/codvid-ai/ig-tracking/delete_reel_task/{task_id}", method="DELETE")
         return result and result.get("result")
 
+    def get_task_status(self, task_id: str) -> Optional[Dict]:
+        """Get real-time processing status for a task (profile or reel)"""
+        result = self._make_request(f"/codvid-ai/ig-tracking/task_status/{task_id}", method="GET")
+        if result and result.get("result"):
+            return result.get("response")
+        return None
+
 def main():
     """Main application"""
     # Get API configuration
-    api_url = Config.get_api_url()
+    api_url = Config.get_api_url("development")
     api_client = APIClient(api_url)
     
     # Set session token if available
@@ -550,4 +557,4 @@ def main():
                     st.json(entry.get('response', {}))
 
 if __name__ == "__main__":
-    main() 
+    main()

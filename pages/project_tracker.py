@@ -22,7 +22,59 @@ def show_project_tracker(api_client):
         st.rerun()
     
     st.markdown("---")
-    
+
+    # Load existing reel tasks once for the page
+    reel_tasks = api_client.get_project_reel_tasks(project)
+
+    # Always-visible status panel at the top
+    st.subheader("⏱️ Current Reel Task Status")
+    selected_task_id = st.session_state.get('monitor_reel_task_id')
+    # If nothing selected yet, default to first task if available
+    if not selected_task_id and reel_tasks:
+        selected_task_id = reel_tasks[0].get('_id')
+        st.session_state.monitor_reel_task_id = selected_task_id
+
+    if reel_tasks:
+        # Allow user to pick which task to monitor
+        id_to_label = {}
+        for t in reel_tasks:
+            label = f"{t.get('reel_id','Unknown')}"
+            id_to_label[t['_id']] = label
+        labels = list(id_to_label.values())
+        ids = list(id_to_label.keys())
+        # Map current selection index
+        try:
+            current_idx = ids.index(selected_task_id) if selected_task_id in ids else 0
+        except Exception:
+            current_idx = 0
+        choice = st.selectbox("Choose a task:", options=labels, index=current_idx)
+        # Update selection
+        for tid, lbl in id_to_label.items():
+            if lbl == choice:
+                st.session_state.monitor_reel_task_id = tid
+                selected_task_id = tid
+                break
+
+        # Show status
+        status = api_client.get_task_status(selected_task_id)
+        if status:
+            if status.get('is_processing'):
+                st.info("⏳ Reel task is processing...")
+                latest_event = status.get('latest_event')
+                if latest_event:
+                    st.caption(
+                        f"Latest: {latest_event.get('event_type', 'event')} at "
+                        f"{datetime.fromtimestamp(latest_event.get('timestamp', 0)).strftime('%Y-%m-%d %H:%M:%S')}"
+                    )
+            else:
+                st.success("✅ Reel task is idle/completed")
+        else:
+            st.warning("⚠️ Unable to fetch reel task status.")
+    else:
+        st.caption("No reel tasks yet.")
+
+    st.markdown("---")
+
     # Add new reel to track
     st.header("➕ Add Reel to Track")
     with st.expander("Add Instagram Reel", expanded=False):
@@ -61,9 +113,7 @@ def show_project_tracker(api_client):
     
     # Display existing reel tasks
     st.header("📊 Tracked Reels")
-    
-    reel_tasks = api_client.get_project_reel_tasks(project)
-    
+
     if not reel_tasks:
         st.info("No reels are being tracked. Add your first reel above!")
     else:
@@ -87,14 +137,24 @@ def show_project_tracker(api_client):
                     if task.get('last_scraped'):
                         last_scraped = datetime.fromtimestamp(task['last_scraped'])
                         st.caption(f"**Last scraped:** {last_scraped.strftime('%Y-%m-%d %H:%M')}")
+
+                    # Show live processing status for this task
+                    try:
+                        t_status = api_client.get_task_status(task['_id'])
+                        if t_status and t_status.get('is_processing'):
+                            st.caption("Status: ⏳ processing")
+                        else:
+                            st.caption("Status: ✅ idle")
+                    except Exception:
+                        pass
                 
                 with col2:
                     # Actions
                     if st.button("🔄 Force Scrape", key=f"force_scrape_reel_{task['_id']}"):
-                        with st.spinner("Scraping reel data..."):
+                        with st.spinner("Starting reel scrape in background..."):
                             if api_client.force_scrape_reel_task(task['_id']):
-                                st.success("Scraping initiated!")
-                                st.rerun()
+                                st.success("Scraping initiated! Monitoring status...")
+                                st.session_state.monitor_reel_task_id = task['_id']
                             else:
                                 st.error("Failed to scrape")
                     
@@ -195,3 +255,26 @@ def show_project_tracker(api_client):
                 
                 fig.update_layout(height=400, showlegend=False)
                 st.plotly_chart(fig, use_container_width=True) 
+
+    # Live reel task status monitor (always visible if a task is selected)
+    st.markdown("---")
+    st.subheader("⏱️ Current Reel Task Status")
+    selected_task_id = st.session_state.get('monitor_reel_task_id')
+    if not selected_task_id and reel_tasks:
+        # Default to first task to show status
+        selected_task_id = reel_tasks[0].get('_id')
+    if selected_task_id:
+        status = api_client.get_task_status(selected_task_id)
+        if status:
+            if status.get('is_processing'):
+                st.info("⏳ Reel task is processing...")
+                latest_event = status.get('latest_event')
+                if latest_event:
+                    st.caption(
+                        f"Latest: {latest_event.get('event_type', 'event')} at "
+                        f"{datetime.fromtimestamp(latest_event.get('timestamp', 0)).strftime('%Y-%m-%d %H:%M:%S')}"
+                    )
+            else:
+                st.success("✅ Reel task is idle/completed")
+        else:
+            st.warning("⚠️ Unable to fetch reel task status.")

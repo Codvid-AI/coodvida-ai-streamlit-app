@@ -87,11 +87,10 @@ def show_profile_details(api_client):
         
         # Force scrape button
         if st.button("🔄 Force Scrape Now", use_container_width=True):
-            with st.spinner("Scraping profile data..."):
+            with st.spinner("Starting scrape in background..."):
                 if api_client.force_scrape_task(profile['_id']):
-                    st.success("Scraping initiated successfully!")
-                    time.sleep(2)
-                    st.rerun()
+                    st.success("Scraping initiated! Monitoring status...")
+                    st.session_state.monitor_task_id = profile['_id']
                 else:
                     st.error("Failed to initiate scraping")
         
@@ -114,7 +113,28 @@ def show_profile_details(api_client):
                     st.error("Failed to update interval")
     
     st.markdown("---")
-    
+
+    # Always show current task status (persists across reloads)
+    current_status = api_client.get_task_status(profile['_id'])
+    if current_status:
+        if current_status.get('is_processing'):
+            st.info("⏳ Task is processing...")
+            latest_event = current_status.get('latest_event')
+            if latest_event:
+                st.caption(
+                    f"Latest: {latest_event.get('event_type', 'event')} at "
+                    f"{datetime.fromtimestamp(latest_event.get('timestamp', 0)).strftime('%Y-%m-%d %H:%M:%S')}"
+                )
+        else:
+            st.success("✅ Task is idle/completed")
+    else:
+        st.warning("⚠️ Unable to fetch task status.")
+
+    # Backward-compat monitor flag: if set and now completed, clear it
+    if hasattr(st.session_state, 'monitor_task_id'):
+        if not (current_status and current_status.get('is_processing')):
+            del st.session_state.monitor_task_id
+
     # Get detailed task data
     task_details = api_client.get_task_details(profile['_id'])
     
