@@ -16,10 +16,51 @@ def show_project_tracker(api_client):
     
     st.title(f"📊 {project} - Reel Tracker")
     
-    # Back button
-    if st.button("← Back to Projects"):
-        st.session_state.current_page = 'projects'
-        st.rerun()
+    # Navigation buttons
+    col1, col2 = st.columns([1, 1])
+    with col1:
+        if st.button("← Back to Projects"):
+            st.session_state.current_page = 'projects'
+            st.rerun()
+    with col2:
+        # Use session state to track delete confirmation
+        if "delete_confirm_tracker" not in st.session_state:
+            st.session_state["delete_confirm_tracker"] = False
+        
+        if not st.session_state["delete_confirm_tracker"]:
+            if st.button("🗑️ Delete Project", type="secondary"):
+                st.session_state["delete_confirm_tracker"] = True
+                st.rerun()
+        else:
+            # Show confirmation dialog
+            st.warning(f"⚠️ Are you sure you want to delete project '{project}'? This action cannot be undone!")
+            col_confirm1, col_confirm2 = st.columns(2)
+            with col_confirm1:
+                if st.button("✅ Yes, Delete", key="confirm_delete_tracker"):
+                    st.info(f"🗑️ Deleting project '{project}'...")
+                    if api_client.delete_project(project):
+                        st.success(f"✅ Project '{project}' deleted successfully!")
+                        # Remove from local cache if it exists
+                        try:
+                            if project in st.session_state.local_user_data.get("projects", {}):
+                                del st.session_state.local_user_data["projects"][project]
+                        except Exception:
+                            pass
+                        # Clear current project and go back to projects
+                        st.session_state.current_project = None
+                        st.session_state.current_page = 'projects'
+                        # Clear the delete confirmation state
+                        if "delete_confirm_tracker" in st.session_state:
+                            del st.session_state["delete_confirm_tracker"]
+                        st.rerun()
+                    else:
+                        st.error(f"❌ Failed to delete project '{project}'")
+                        st.session_state["delete_confirm_tracker"] = False
+                        st.rerun()
+            with col_confirm2:
+                if st.button("❌ Cancel", key="cancel_delete_tracker"):
+                    st.session_state["delete_confirm_tracker"] = False
+                    st.rerun()
     
     st.markdown("---")
 

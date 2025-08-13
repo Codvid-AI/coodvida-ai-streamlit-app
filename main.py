@@ -316,7 +316,22 @@ class APIClient:
     def delete_project(self, project_name: str) -> bool:
         """Delete a project"""
         data = {"project_name": project_name}
+        
+        # Add debug logging
+        if self.debug_enabled:
+            print(f"DEBUG: Attempting to delete project: {project_name}")
+            print(f"DEBUG: Request data: {data}")
+        
         result = self._make_request("/codvid-ai/project/delete-project", data=data)
+        
+        # Add debug logging for result
+        if self.debug_enabled:
+            print(f"DEBUG: Delete project result: {result}")
+            if result:
+                print(f"DEBUG: Result success: {result.get('result')}")
+            else:
+                print("DEBUG: No result returned from delete request")
+        
         return result and result.get("result")
     
     def get_project_data(self, project_name: str) -> Optional[Dict]:
@@ -328,7 +343,11 @@ class APIClient:
         return None
     
     def ai_chat(self, project_name: str, message: str) -> str:
-        """Send message to AI chat (streaming). Returns aggregated assistant text."""
+        """Send message to AI chat (streaming). Returns aggregated assistant text.
+        
+        FIXED: Returns None when the backend already added the message via data_mods
+        to prevent duplicate messages in the frontend.
+        """
         request_data = {
             "project_name": project_name,
             "message": {
@@ -344,6 +363,7 @@ class APIClient:
             return "Failed to get AI response"
         aggregated_text = ""
         chunks_collected = [] if self.debug_enabled else None
+        assistant_message_added_via_mods = False
         try:
             for chunk in response.iter_content(chunk_size=None, decode_unicode=True):
                 if not chunk:
@@ -380,10 +400,11 @@ class APIClient:
                                     and key_path[-1] == "chats"
                                     and mode in ("append", "create")
                                 ):
-                                    # Value may be a message dict or list
+                                    # Check if this mod adds an assistant message
                                     messages = value if isinstance(value, list) else [value]
                                     for m in messages:
                                         if isinstance(m, dict) and m.get("role") == "assistant":
+                                            assistant_message_added_via_mods = True
                                             txt = m.get("text")
                                             if txt:
                                                 aggregated_text += txt
@@ -399,11 +420,16 @@ class APIClient:
                     'method': 'POST',
                     'stream': True,
                     'request': {'url': f"{self.base_url}/codvid-ai/ai/respond", 'body': {'schema_version': '4.0', 'data': request_data}},
-                    'response': {'chunks': chunks_collected, 'aggregated_text': aggregated_text},
+                    'response': {'chunks': chunks_collected, 'aggregated_text': aggregated_text, 'assistant_message_added_via_mods': assistant_message_added_via_mods},
                     'duration_ms': int((_time.time() - start_time) * 1000),
                 })
             except Exception:
                 pass
+        
+        # If the backend already added the assistant message via data_mods, 
+        # we don't need to return the aggregated text to avoid duplication
+        if assistant_message_added_via_mods:
+            return None  # Signal that the message was already added
         return aggregated_text or "No response from AI"
     
     # Instagram Profile Tracking Methods

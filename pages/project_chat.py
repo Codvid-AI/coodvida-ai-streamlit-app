@@ -1,6 +1,13 @@
 import streamlit as st
 import json
 
+# FIXED: Duplicate AI response issue
+# The problem was that AI responses were being added twice:
+# 1. Once via data_mods from the backend (which automatically updates the local cache)
+# 2. Once manually in the frontend code
+# 
+# Solution: Modified ai_chat() to return None when message is already added via data_mods
+
 def show_project_chat(api_client):
     """Show project chat interface with improved functionality"""
     if not st.session_state.current_project:
@@ -12,16 +19,63 @@ def show_project_chat(api_client):
     
     st.title(f"💬 {project} - AI Chat")
     
-    # Back button
-    if st.button("← Back to Projects"):
-        st.session_state.current_page = 'projects'
-        st.rerun()
+    # Navigation buttons
+    col1, col2 = st.columns([1, 1])
+    with col1:
+        if st.button("← Back to Projects"):
+            st.session_state.current_page = 'projects'
+            st.rerun()
+    with col2:
+        # Use session state to track delete confirmation
+        if "delete_confirm_chat" not in st.session_state:
+            st.session_state["delete_confirm_chat"] = False
+        
+        if not st.session_state["delete_confirm_chat"]:
+            if st.button("🗑️ Delete Project", type="secondary"):
+                st.session_state["delete_confirm_chat"] = True
+                st.rerun()
+        else:
+            # Show confirmation dialog
+            st.warning(f"⚠️ Are you sure you want to delete project '{project}'? This action cannot be undone!")
+            col_confirm1, col_confirm2 = st.columns(2)
+            with col_confirm1:
+                if st.button("✅ Yes, Delete", key="confirm_delete_chat"):
+                    st.info(f"🗑️ Deleting project '{project}'...")
+                    if api_client.delete_project(project):
+                        st.success(f"✅ Project '{project}' deleted successfully!")
+                        # Remove from local cache if it exists
+                        try:
+                            if project in st.session_state.local_user_data.get("projects", {}):
+                                del st.session_state.local_user_data["projects"][project]
+                        except Exception:
+                            pass
+                        # Clear current project and go back to projects
+                        st.session_state.current_project = None
+                        st.session_state.current_page = 'projects'
+                        # Clear the delete confirmation state
+                        if "delete_confirm_chat" in st.session_state:
+                            del st.session_state["delete_confirm_chat"]
+                        st.rerun()
+                    else:
+                        st.error(f"❌ Failed to delete project '{project}'")
+                        st.session_state["delete_confirm_chat"] = False
+                        st.rerun()
+            with col_confirm2:
+                if st.button("❌ Cancel", key="cancel_delete_chat"):
+                    st.session_state["delete_confirm_chat"] = False
+                    st.rerun()
     
     st.markdown("---")
     
-    # Initialize chat history
+    # Initialize chat history (fallback only)
     if 'chat_history' not in st.session_state:
         st.session_state.chat_history = []
+    
+    # Ensure local cache is properly initialized for this project
+    if project not in st.session_state.local_user_data.get("projects", {}):
+        st.session_state.local_user_data.setdefault("projects", {})[project] = {}
+    if "chats" not in st.session_state.local_user_data["projects"][project]:
+        st.session_state.local_user_data["projects"][project]["chats"] = []
     
     # Display chat history with better formatting
     st.subheader("Chat History")
@@ -37,19 +91,24 @@ def show_project_chat(api_client):
         local_chats = None
 
     with chat_container:
+        # Always prefer local cache chats if available, as they're more up-to-date
         messages_src = local_chats if isinstance(local_chats, list) and local_chats else st.session_state.chat_history
-        for i, message in enumerate(messages_src):
-            role = message.get('role')
-            content = message.get('content') or message.get('text') or ''
-            if role == 'user':
-                st.markdown(f"**👤 You:** {content}")
-            elif role == 'assistant':
-                st.markdown(f"**🤖 AI:** {content}")
-            else:
-                st.markdown(f"**{role or 'system'}:** {content}")
+        
+        if not messages_src:
+            st.info("No messages yet. Start a conversation!")
+        else:
+            for i, message in enumerate(messages_src):
+                role = message.get('role')
+                content = message.get('content') or message.get('text') or ''
+                if role == 'user':
+                    st.markdown(f"**👤 You:** {content}")
+                elif role == 'assistant':
+                    st.markdown(f"**🤖 AI:** {content}")
+                else:
+                    st.markdown(f"**{role or 'system'}:** {content}")
 
-            if i < len(messages_src) - 1:
-                st.markdown("---")
+                if i < len(messages_src) - 1:
+                    st.markdown("---")
     
     # Chat input with improved interface
     st.subheader("Send Message")
@@ -89,8 +148,15 @@ def show_project_chat(api_client):
             clear_chat = st.form_submit_button("Clear Chat History")
         
         if clear_chat:
+            # Clear both local cache and fallback history
+            try:
+                st.session_state.local_user_data["projects"][project]["chats"] = []
+            except Exception:
+                pass
             st.session_state.chat_history = []
             st.rerun()
+        
+
         
         if submit and message:
             # Add user message to local cache and fallback history
@@ -99,7 +165,7 @@ def show_project_chat(api_client):
                     'role': 'user', 'type': 'text', 'text': message
                 })
             except Exception:
-                st.session_state.chat_history.append({'role': 'user', 'content': message})
+                st.session_state.chat_history.append({'role': 'user', 'text': message})
 
             if hasattr(st.session_state, 'example_message'):
                 del st.session_state.example_message
@@ -107,16 +173,27 @@ def show_project_chat(api_client):
             # Get AI response (streaming aggregation)
             with st.spinner("AI is thinking..."):
                 ai_response = api_client.ai_chat(project, message)
-                # If the streaming returned empty text but debug logs show chunks,
-                # fall back to showing a generic acknowledgment to avoid 'no response'
-                if not ai_response:
+                # If ai_chat returns None, it means the message was already added via data_mods
+                # If it returns empty text but debug logs show chunks, fall back to showing a generic acknowledgment
+                if ai_response is None:
+                    # Message was already added via data_mods, no need to add again
+                    pass
+                elif not ai_response:
                     ai_response = "(received streaming chunks, see debug logs)"
-                try:
-                    st.session_state.local_user_data["projects"][project]["chats"].append({
-                        'role': 'assistant', 'type': 'text', 'text': ai_response
-                    })
-                except Exception:
-                    st.session_state.chat_history.append({'role': 'assistant', 'content': ai_response})
+                    try:
+                        st.session_state.local_user_data["projects"][project]["chats"].append({
+                            'role': 'assistant', 'type': 'text', 'text': ai_response
+                        })
+                    except Exception:
+                        st.session_state.chat_history.append({'role': 'assistant', 'text': ai_response})
+                else:
+                    # Only add the message if it wasn't already added via data_mods
+                    try:
+                        st.session_state.local_user_data["projects"][project]["chats"].append({
+                            'role': 'assistant', 'type': 'text', 'text': ai_response
+                        })
+                    except Exception:
+                        st.session_state.chat_history.append({'role': 'assistant', 'text': ai_response})
 
             st.rerun()
     
@@ -132,4 +209,17 @@ def show_project_chat(api_client):
     - Ask for analytics insights and recommendations
     - Request content strategy advice
     - Get sentiment analysis summaries
-    """) 
+    """)
+    
+    # Debug information (only show in debug mode)
+    if st.session_state.get('debug_mode', False):
+        st.sidebar.markdown("---")
+        st.sidebar.subheader("🐛 Debug Info")
+        try:
+            local_chat_count = len(st.session_state.local_user_data["projects"][project]["chats"])
+            st.sidebar.markdown(f"**Local cache messages:** {local_chat_count}")
+        except Exception:
+            st.sidebar.markdown("**Local cache messages:** Error")
+        
+        fallback_count = len(st.session_state.chat_history)
+        st.sidebar.markdown(f"**Fallback messages:** {fallback_count}") 
