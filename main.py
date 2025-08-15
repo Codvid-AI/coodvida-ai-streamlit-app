@@ -185,7 +185,7 @@ class APIClient:
             return True
         return self.load_project_into_cache(project_name)
     
-    def _make_request(self, endpoint: str, method: str = "POST", data: dict | None = None, stream: bool = False, timeout_seconds: int = 60):
+    def _make_request(self, endpoint: str, method: str = "POST", data: dict | None = None, stream: bool = False, timeout_seconds: int = 180):
         """Make HTTP request to the API (supports streaming)"""
         url = f"{self.base_url}{endpoint}"
         headers = {
