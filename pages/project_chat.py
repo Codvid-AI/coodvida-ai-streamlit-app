@@ -1,5 +1,6 @@
 import streamlit as st
 import json
+from datetime import datetime
 
 # FIXED: Duplicate AI response issue
 # The problem was that AI responses were being added twice:
@@ -170,30 +171,106 @@ def show_project_chat(api_client):
             if hasattr(st.session_state, 'example_message'):
                 del st.session_state.example_message
 
-            # Get AI response (streaming aggregation)
+            # Get AI response (streaming)
             with st.spinner("AI is thinking..."):
-                ai_response = api_client.ai_chat(project, message)
-                # If ai_chat returns None, it means the message was already added via data_mods
-                # If it returns empty text but debug logs show chunks, fall back to showing a generic acknowledgment
-                if ai_response is None:
-                    # Message was already added via data_mods, no need to add again
-                    pass
-                elif not ai_response:
-                    ai_response = "(received streaming chunks, see debug logs)"
+                streaming_response = api_client.ai_chat(project, message)
+                
+                if streaming_response:
+                    # Create a placeholder for the streaming AI response
+                    ai_message_placeholder = st.empty()
+                    ai_message_placeholder.markdown("**🤖 AI:** ")
+                    
+                    # Add a typing indicator
+                    typing_placeholder = st.empty()
+                    typing_placeholder.markdown("🔄 *AI is typing...*")
+                    
+                    # Add a progress bar for streaming
+                    progress_bar = st.progress(0)
+                    progress_text = st.empty()
+                    progress_text.text("Starting AI response...")
+                    
+                    # Process streaming response in real-time using the helper method
+                    aggregated_text = ""
+                    assistant_message_added_via_mods = False
+                    chunk_count = 0
+                    
                     try:
-                        st.session_state.local_user_data["projects"][project]["chats"].append({
-                            'role': 'assistant', 'type': 'text', 'text': ai_response
+                        for text_chunk, is_final, data_mods in api_client.process_streaming_response(streaming_response, project):
+                            if text_chunk:
+                                chunk_count += 1
+                                aggregated_text += text_chunk
+                                # Update the placeholder in real-time with better formatting
+                                ai_message_placeholder.markdown(f"**🤖 AI:** {aggregated_text}")
+                                
+                                # Update progress (simulate progress since we don't know total chunks)
+                                progress_value = min(0.9, chunk_count * 0.1)  # Cap at 90% until complete
+                                progress_bar.progress(progress_value)
+                                progress_text.text(f"Receiving response... ({chunk_count} chunks)")
+                            
+                            # Check if this was added via data_mods
+                            if data_mods and not assistant_message_added_via_mods:
+                                for mod in data_mods:
+                                    try:
+                                        key_path = mod.get("key_path")
+                                        mode = mod.get("mode")
+                                        value = mod.get("value")
+                                        if (
+                                            isinstance(key_path, list)
+                                            and len(key_path) >= 3
+                                            and key_path[-2] == project
+                                            and key_path[-1] == "chats"
+                                            and mode in ("append", "create")
+                                        ):
+                                            messages = value if isinstance(value, list) else [value]
+                                            for m in messages:
+                                                if isinstance(m, dict) and m.get("role") == "assistant":
+                                                    assistant_message_added_via_mods = True
+                                                    break
+                                    except Exception:
+                                        continue
+                            
+                            # If final, break the loop
+                            if is_final:
+                                break
+                        
+                        # Complete the progress bar
+                        progress_bar.progress(1.0)
+                        progress_text.text("✅ Response complete!")
+                        
+                        # Remove typing indicator when done
+                        typing_placeholder.empty()
+                        
+                        # Add a completion indicator
+                        if aggregated_text:
+                            st.success("✅ AI response complete!")
+                                
+                    except Exception as e:
+                        st.error(f"Error processing streaming response: {e}")
+                        typing_placeholder.empty()
+                        progress_bar.progress(0)
+                        progress_text.text("❌ Error occurred")
+                    
+                    # Add the complete AI response to chat history if not already added via data_mods
+                    if aggregated_text and not assistant_message_added_via_mods:
+                        try:
+                            st.session_state.local_user_data["projects"][project]["chats"].append({
+                                'role': 'assistant', 'type': 'text', 'text': aggregated_text
+                            })
+                        except Exception:
+                            st.session_state.chat_history.append({'role': 'assistant', 'text': aggregated_text})
+                    
+                    # Add debug logging if enabled
+                    if st.session_state.get('debug_mode', False):
+                        st.session_state.api_logs.append({
+                            'timestamp': datetime.now().isoformat(),
+                            'endpoint': "/codvid-ai/ai/respond",
+                            'method': 'POST',
+                            'stream': True,
+                            'request': {'project': project, 'message': message},
+                            'response': {'aggregated_text': aggregated_text, 'assistant_message_added_via_mods': assistant_message_added_via_mods},
                         })
-                    except Exception:
-                        st.session_state.chat_history.append({'role': 'assistant', 'text': ai_response})
                 else:
-                    # Only add the message if it wasn't already added via data_mods
-                    try:
-                        st.session_state.local_user_data["projects"][project]["chats"].append({
-                            'role': 'assistant', 'type': 'text', 'text': ai_response
-                        })
-                    except Exception:
-                        st.session_state.chat_history.append({'role': 'assistant', 'text': ai_response})
+                    st.error("Failed to get AI response")
 
             st.rerun()
     

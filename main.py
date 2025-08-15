@@ -342,11 +342,10 @@ class APIClient:
             return result.get("response", {}).get("project_data")
         return None
     
-    def ai_chat(self, project_name: str, message: str) -> str:
-        """Send message to AI chat (streaming). Returns aggregated assistant text.
+    def ai_chat(self, project_name: str, message: str):
+        """Send message to AI chat (streaming). Returns streaming response object.
         
-        FIXED: Returns None when the backend already added the message via data_mods
-        to prevent duplicate messages in the frontend.
+        The response object can be iterated over to get chunks in real-time.
         """
         request_data = {
             "project_name": project_name,
@@ -360,10 +359,20 @@ class APIClient:
         start_time = _time.time()
         response = self._make_request("/codvid-ai/ai/respond", method="POST", data=request_data, stream=True)
         if not response:
-            return "Failed to get AI response"
+            return None
+        
+        # Return the streaming response object for real-time processing
+        return response
+    
+    def process_streaming_response(self, response, project_name: str):
+        """Process streaming response and yield text chunks in real-time.
+        
+        This method yields (text_chunk, is_final, data_mods) tuples.
+        """
         aggregated_text = ""
-        chunks_collected = [] if self.debug_enabled else None
+        chunks_collected = []
         assistant_message_added_via_mods = False
+        
         try:
             for chunk in response.iter_content(chunk_size=None, decode_unicode=True):
                 if not chunk:
@@ -371,19 +380,20 @@ class APIClient:
                 try:
                     chunk_data = json.loads(chunk)
                 except Exception:
-                    if self.debug_enabled:
-                        chunks_collected.append({'raw': chunk})
                     continue
+                
                 if chunk_data.get("result"):
-                    if self.debug_enabled:
-                        chunks_collected.append(chunk_data)
+                    chunks_collected.append(chunk_data)
                     resp = chunk_data.get("response", {})
+                    
                     # Collect assistant text if provided
                     text_piece = resp.get("text") or resp.get("message", {}).get("text")
                     if text_piece:
                         aggregated_text += text_piece
+                        # Yield the text chunk for real-time display
+                        yield text_piece, False, None
 
-                    # Also parse data_mods to capture assistant messages appended to chats
+                    # Parse data_mods to capture assistant messages appended to chats
                     data_mods = resp.get("data_mods") or []
                     if isinstance(data_mods, list):
                         # Apply to local cache
@@ -408,29 +418,17 @@ class APIClient:
                                             txt = m.get("text")
                                             if txt:
                                                 aggregated_text += txt
+                                                # Yield the text chunk for real-time display
+                                                yield txt, False, None
                             except Exception:
                                 continue
-        except Exception:
-            pass
-        if self.debug_enabled:
-            try:
-                self._append_log({
-                    'timestamp': datetime.now().isoformat(),
-                    'endpoint': "/codvid-ai/ai/respond",
-                    'method': 'POST',
-                    'stream': True,
-                    'request': {'url': f"{self.base_url}/codvid-ai/ai/respond", 'body': {'schema_version': '4.0', 'data': request_data}},
-                    'response': {'chunks': chunks_collected, 'aggregated_text': aggregated_text, 'assistant_message_added_via_mods': assistant_message_added_via_mods},
-                    'duration_ms': int((_time.time() - start_time) * 1000),
-                })
-            except Exception:
-                pass
+        except Exception as e:
+            # Yield error information
+            yield f"Error processing response: {str(e)}", True, None
+            return
         
-        # If the backend already added the assistant message via data_mods, 
-        # we don't need to return the aggregated text to avoid duplication
-        if assistant_message_added_via_mods:
-            return None  # Signal that the message was already added
-        return aggregated_text or "No response from AI"
+        # Yield final result
+        yield aggregated_text, True, data_mods if 'data_mods' in locals() else []
     
     # Instagram Profile Tracking Methods
     def create_tracking_task(self, target_profile: str, is_competitor: bool = False) -> Optional[str]:
@@ -525,7 +523,7 @@ class APIClient:
 def main():
     """Main application"""
     # Get API configuration
-    api_url = Config.get_api_url("development")
+    api_url = Config.get_api_url()
     api_client = APIClient(api_url)
     
     # Set session token if available
