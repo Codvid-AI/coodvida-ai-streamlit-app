@@ -151,36 +151,6 @@ web_app/
     └── project_tracker.py # Reel tracking interface
 ```
 
-## API Endpoints Used
-
-### Authentication
-- `POST /codvid-ai/auth/login` - User login
-- `POST /codvid-ai/auth/signup` - User registration
-- `POST /codvid-ai/user/delete-account` - Account deletion
-
-### Project Management
-- `POST /codvid-ai/project/get-project-list` - Get user projects
-- `POST /codvid-ai/project/create-project` - Create new project
-- `POST /codvid-ai/project/delete-project` - Delete project
-- `POST /codvid-ai/project/get-project-data` - Get project data
-
-### Instagram Tracking
-- `POST /codvid-ai/ig-tracking/create_task` - Create tracking task
-- `GET /codvid-ai/ig-tracking/get_tasks` - Get all tracking tasks
-- `GET /codvid-ai/ig-tracking/get_task/{task_id}` - Get task details
-- `POST /codvid-ai/ig-tracking/force_scrape/{task_id}` - Force scrape
-- `DELETE /codvid-ai/ig-tracking/delete_task/{task_id}` - Delete task
-- `PUT /codvid-ai/ig-tracking/update_scrape_interval/{task_id}` - Update interval
-- `GET /codvid-ai/ig-tracking/sentiment_summary/{task_id}` - Get sentiment
-
-### Reel Tracking
-- `POST /codvid-ai/ig-tracking/create_reel_task` - Create reel task
-- `POST /codvid-ai/ig-tracking/get_project_reel_tasks` - Get reel tasks
-- `POST /codvid-ai/ig-tracking/force_scrape_reel/{task_id}` - Force reel scrape
-
-### AI Chat
-- `POST /codvid-ai/ai/respond` - AI chat response
-
 ## Mobile Optimization
 
 The app is optimized for mobile devices with:

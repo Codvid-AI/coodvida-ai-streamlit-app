@@ -116,20 +116,15 @@ def show_project_chat(api_client):
     
     # Add some example prompts
     st.markdown("**💡 Quick Prompts:**")
-    col1, col2, col3 = st.columns(3)
+    col1, col2 = st.columns(2)
     with col1:
         if st.button("📊 Analyze Profile", key="prompt_analyze"):
-            example_message = "sudo123 fetch the profile @foodxtaste"
+            example_message = "Please analyze the profile @foodxtaste"
             st.session_state.example_message = example_message
     
     with col2:
-        if st.button("📈 Get Insights", key="prompt_insights"):
-            example_message = "What are the key insights from my Instagram data?"
-            st.session_state.example_message = example_message
-    
-    with col3:
-        if st.button("🎯 Strategy", key="prompt_strategy"):
-            example_message = "What content strategy should I follow based on my analytics?"
+        if st.button("🎬 Analyze IG Reel", key="prompt_reel"):
+            example_message = "Please analyse the reel content: https://www.instagram.com/reel/..."
             st.session_state.example_message = example_message
     
     with st.form("chat_form"):
