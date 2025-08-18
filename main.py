@@ -134,7 +134,23 @@ class APIClient:
                     if isinstance(target, dict):
                         if last_key not in target or not isinstance(target[last_key], list):
                             target[last_key] = []
-                        target[last_key].append(value)
+                        # Check for duplicates before appending (for chat messages)
+                        if last_key == "chats" and isinstance(value, dict):
+                            # Check if this message already exists to prevent duplicates
+                            existing_messages = target[last_key]
+                            is_duplicate = False
+                            for existing_msg in existing_messages:
+                                if (isinstance(existing_msg, dict) and 
+                                    existing_msg.get('role') == value.get('role') and
+                                    existing_msg.get('text') == value.get('text') and
+                                    existing_msg.get('type') == value.get('type')):
+                                    is_duplicate = True
+                                    break
+                            
+                            if not is_duplicate:
+                                target[last_key].append(value)
+                        else:
+                            target[last_key].append(value)
                     elif isinstance(target, list) and isinstance(last_key, int):
                         if last_key < len(target):
                             if not isinstance(target[last_key], list):
@@ -372,6 +388,7 @@ class APIClient:
         aggregated_text = ""
         chunks_collected = []
         assistant_message_added_via_mods = False
+        yielded_text_pieces = set()  # Track what text has already been yielded to prevent duplicates
         
         try:
             for chunk in response.iter_content(chunk_size=None, decode_unicode=True):
@@ -388,8 +405,9 @@ class APIClient:
                     
                     # Collect assistant text if provided
                     text_piece = resp.get("text") or resp.get("message", {}).get("text")
-                    if text_piece:
+                    if text_piece and text_piece not in yielded_text_pieces:
                         aggregated_text += text_piece
+                        yielded_text_pieces.add(text_piece)
                         # Yield the text chunk for real-time display
                         yield text_piece, False, None
 
@@ -416,8 +434,9 @@ class APIClient:
                                         if isinstance(m, dict) and m.get("role") == "assistant":
                                             assistant_message_added_via_mods = True
                                             txt = m.get("text")
-                                            if txt:
+                                            if txt and txt not in yielded_text_pieces:
                                                 aggregated_text += txt
+                                                yielded_text_pieces.add(txt)
                                                 # Yield the text chunk for real-time display
                                                 yield txt, False, None
                             except Exception:
