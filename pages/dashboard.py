@@ -137,6 +137,66 @@ def show_dashboard(api_client):
     # Current task status (always visible if tasks exist)
     if tasks:
         st.subheader("⏱️ Current Profile Task Status")
+        
+        # Show overall statistics
+        st.markdown("📊 **Overall Task Statistics:**")
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            total_tasks = len(tasks)
+            st.metric("Total Tasks", total_tasks)
+        
+        with col2:
+            active_tasks = len([t for t in tasks if t.get('status') == 'active'])
+            st.metric("Active Tasks", active_tasks)
+        
+        with col3:
+            own_profiles = len([t for t in tasks if not t.get('is_competitor')])
+            st.metric("Own Profiles", own_profiles)
+        
+        with col4:
+            competitor_profiles = len([t for t in tasks if t.get('is_competitor')])
+            st.metric("Competitors", competitor_profiles)
+        
+        st.markdown("---")
+        
+        # Show recent activity across all tasks
+        st.subheader("🕐 Recent Activity")
+        
+        # Get recent activity from all tasks
+        recent_activities = []
+        for task in tasks:
+            if task.get('last_scraped'):
+                recent_activities.append({
+                    'profile': task['target_profile'],
+                    'type': 'Competitor' if task.get('is_competitor') else 'Own',
+                    'last_scraped': task['last_scraped'],
+                    'status': task.get('status', 'unknown')
+                })
+        
+        if recent_activities:
+            # Sort by last scraped time (most recent first)
+            recent_activities.sort(key=lambda x: x['last_scraped'], reverse=True)
+            
+            # Show top 5 most recent activities
+            for i, activity in enumerate(recent_activities[:5]):
+                time_ago = datetime.now() - datetime.fromtimestamp(activity['last_scraped'])
+                if time_ago.days > 0:
+                    time_text = f"{time_ago.days} days ago"
+                elif time_ago.seconds > 3600:
+                    time_text = f"{time_ago.seconds // 3600} hours ago"
+                else:
+                    time_text = f"{time_ago.seconds // 60} minutes ago"
+                
+                status_emoji = "✅" if activity['status'] == 'active' else "⏸️"
+                type_emoji = "🏢" if activity['type'] == 'Competitor' else "👤"
+                
+                st.caption(f"{status_emoji} @{activity['profile']} ({type_emoji} {activity['type']}) - {time_text}")
+        else:
+            st.info("ℹ️ No recent scraping activity. Tasks may be new or haven't been scraped yet.")
+        
+        st.markdown("---")
+        
         # Build options mapping
         id_to_label = {t['_id']: f"@{t.get('target_profile','unknown')} ({'Competitor' if t.get('is_competitor') else 'Own'})" for t in tasks}
         ids = list(id_to_label.keys())
@@ -156,13 +216,227 @@ def show_dashboard(api_client):
         # Show status
         status = api_client.get_task_status(selected_profile_task_id)
         if status:
+            # Show task summary at the top
+            st.subheader("📋 Task Summary")
+            
+            # Get task details for display
+            task_details = None
+            for task in tasks:
+                if task['_id'] == selected_profile_task_id:
+                    task_details = task
+                    break
+            
+            if task_details:
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.markdown(f"**Profile:** @{task_details.get('target_profile', 'Unknown')}")
+                with col2:
+                    task_type = '🏢 Competitor' if task_details.get('is_competitor') else '👤 Own Profile'
+                    st.markdown(f"**Type:** {task_type}")
+                with col3:
+                    status_text = "⏳ Processing" if status.get('is_processing') else "✅ Idle/Completed"
+                    st.markdown(f"**Status:** {status_text}")
+                
+                # Show additional task information
+                col1, col2 = st.columns(2)
+                with col1:
+                    if task_details.get('last_scraped'):
+                        last_scraped = datetime.fromtimestamp(task_details['last_scraped'])
+                        st.markdown(f"**Last Scraped:** {last_scraped.strftime('%Y-%m-%d %H:%M')}")
+                    else:
+                        st.markdown("**Last Scraped:** Never")
+                    
+                    # Show scrape interval
+                    interval = task_details.get('scrape_interval_days', 2)
+                    interval_text = f"Every {interval} days"
+                    if interval == 1:
+                        interval_text = "Daily"
+                    elif interval == 0.5:
+                        interval_text = "Every 12 hours"
+                    elif interval == 7:
+                        interval_text = "Weekly"
+                    st.markdown(f"**Scrape Interval:** {interval_text}")
+                
+                with col2:
+                    # Calculate next scrape time
+                    if task_details.get('last_scraped'):
+                        next_scrape = task_details['last_scraped'] + (interval * 24 * 3600)
+                        next_scrape_dt = datetime.fromtimestamp(next_scrape)
+                        now = datetime.now()
+                        
+                        if next_scrape_dt > now:
+                            time_until = next_scrape_dt - now
+                            if time_until.days > 0:
+                                st.markdown(f"**Next Scrape:** {next_scrape_dt.strftime('%Y-%m-%d %H:%M')} (in {time_until.days} days)")
+                            else:
+                                hours = time_until.seconds // 3600
+                                st.markdown(f"**Next Scrape:** {next_scrape_dt.strftime('%Y-%m-%d %H:%M')} (in {hours} hours)")
+                        else:
+                            st.warning("⚠️ **Next Scrape:** Overdue!")
+                    else:
+                        st.info("ℹ️ **Next Scrape:** Will be scheduled after first scrape")
+            
+            st.markdown("---")
+            
             if status.get('is_processing'):
                 st.info("⏳ Task is processing...")
+                
+                # Add manual refresh for processing tasks
+                st.markdown("**🔄 Manual Refresh:**")
+                col1, col2 = st.columns([1, 3])
+                with col1:
+                    if st.button("🔄 Refresh Status", key=f"refresh_status_{selected_profile_task_id}", type="primary"):
+                        st.rerun()
+                with col2:
+                    st.caption("💡 Click this button to fetch the latest task status from the server")
+                    st.caption(f"🕐 Last checked: {datetime.now().strftime('%H:%M:%S')}")
+                
+                st.markdown("---")
+                
+                # Display detailed latest event information
                 latest_event = status.get('latest_event')
                 if latest_event:
-                    st.caption(f"Latest: {latest_event.get('event_type','event')} at {datetime.fromtimestamp(latest_event.get('timestamp',0)).strftime('%Y-%m-%d %H:%M:%S')}")
+                    st.subheader("📊 Latest Event Details")
+                    
+                    # Show current processing stage with visual indicator
+                    event_type = latest_event.get('event_type', 'Unknown')
+                    stage_emoji = {
+                        'scrape_started': '🚀',
+                        'account_fetched': '👤',
+                        'reels_filtered': '🎬',
+                        'processing_reels': '⚙️',
+                        'reels_processed': '✅',
+                        'profile_data_updated': '💾'
+                    }.get(event_type, '📊')
+                    
+                    st.markdown(f"**Current Stage:** {stage_emoji} {event_type.replace('_', ' ').title()}")
+                    
+                    # Create columns for better layout
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        st.markdown(f"**Event Type:** {latest_event.get('event_type', 'Unknown')}")
+                        st.markdown(f"**Timestamp:** {datetime.fromtimestamp(latest_event.get('timestamp', 0)).strftime('%Y-%m-%d %H:%M:%S')}")
+                        
+                        # Show processing stats if available
+                        if 'started_at' in status:
+                            started_time = datetime.fromtimestamp(status['started_at'])
+                            st.markdown(f"**Started:** {started_time.strftime('%Y-%m-%d %H:%M:%S')}")
+                        
+                        if 'updated_at' in status:
+                            updated_time = datetime.fromtimestamp(status['updated_at'])
+                            st.markdown(f"**Last Updated:** {updated_time.strftime('%Y-%m-%d %H:%M:%S')}")
+                    
+                    with col2:
+                        if 'logs_count' in status:
+                            st.markdown(f"**Log Entries:** {status['logs_count']}")
+                        
+                        # Show specific event data based on event type
+                        event_type = latest_event.get('event_type', '')
+                        if 'scraped_posts_count' in latest_event:
+                            st.markdown(f"**Posts Scraped:** {latest_event['scraped_posts_count']}")
+                        if 'reels_count' in latest_event:
+                            st.markdown(f"**Reels Found:** {latest_event['reels_count']}")
+                        if 'processing_progress' in latest_event:
+                            st.markdown(f"**Progress:** {latest_event['processing_progress']}")
+                        
+                        # Show event-specific information based on event type
+                        if event_type == 'scrape_started':
+                            st.success("🚀 Scraping process initiated")
+                        elif event_type == 'account_fetched':
+                            st.success("👤 Instagram account data retrieved")
+                        elif event_type == 'reels_filtered':
+                            st.success("🎬 Reels filtered from posts")
+                        elif event_type == 'processing_reels':
+                            st.success("⚙️ Processing reels data")
+                        elif event_type == 'reels_processed':
+                            st.success("✅ Reel processing completed")
+                        elif event_type == 'profile_data_updated':
+                            st.success("💾 Profile data updated in database")
+                        elif event_type:
+                            st.info(f"📊 Event: {event_type}")
+                    
+                    # Show all event data in an expandable section
+                    with st.expander("🔍 View All Event Data", expanded=False):
+                        st.json(latest_event)
+                    
+                    # Show processing history if available
+                    if 'logs_count' in status and status['logs_count'] > 0:
+                        st.subheader("📜 Processing History")
+                        st.info(f"📊 Total log entries: {status['logs_count']}")
+                        
+                        # Note: Full logs would require additional API endpoint
+                        # For now, show what we can from the current status
+                        if 'started_at' in status and 'updated_at' in status:
+                            duration = status['updated_at'] - status['started_at']
+                            st.caption(f"⏱️ Processing duration: {duration:.1f} seconds")
+                            st.caption("ℹ️ This shows how long the task has been running since it started")
+                        
+                        st.caption("💡 Click the refresh button above to see latest updates")
+                        
+                        # Add information about what's available and what isn't
+                        st.info("ℹ️ **Information Available:**")
+                        st.caption("• Current processing stage and event type")
+                        st.caption("• Timestamp of latest event")
+                        st.caption("• Processing duration and log count")
+                        st.caption("• Event-specific data (posts scraped, reels found, etc.)")
+                        
+                        st.warning("⚠️ **Limitations:**")
+                        st.caption("• No estimated completion time (varies by profile size and network)")
+                        st.caption("• No progress percentage (depends on Instagram's response time)")
+                        st.caption("• Refresh manually to see updates (no auto-refresh)")
+                        
+                else:
+                    st.warning("⚠️ No event information available")
+                    
             else:
                 st.success("✅ Task is idle/completed")
+                
+                # Show last event if available (for completed tasks)
+                latest_event = status.get('latest_event')
+                if latest_event:
+                    st.info("📋 Last Processing Event:")
+                    st.caption(f"{latest_event.get('event_type', 'event')} at {datetime.fromtimestamp(latest_event.get('timestamp', 0)).strftime('%Y-%m-%d %H:%M:%S')}")
+                    
+                    # Show completion summary
+                    if 'scraped_posts_count' in latest_event:
+                        st.success(f"✅ Successfully scraped {latest_event['scraped_posts_count']} posts")
+                    if 'reels_count' in latest_event:
+                        st.success(f"🎬 Found {latest_event['reels_count']} reels")
+                
+                # Show next steps for completed tasks
+                st.subheader("🚀 Next Steps")
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    if st.button("📊 View Profile Details", key=f"view_details_completed_{selected_profile_task_id}"):
+                        # Find the task in the list
+                        selected_task = None
+                        for task in tasks:
+                            if task['_id'] == selected_profile_task_id:
+                                selected_task = task
+                                break
+                        
+                        if selected_task:
+                            st.session_state.current_profile = selected_task
+                            st.session_state.current_page = 'profile_details'
+                            st.rerun()
+                    
+                    if st.button("🔄 Force New Scrape", key=f"force_scrape_completed_{selected_profile_task_id}"):
+                        with st.spinner("Initiating new scrape..."):
+                            if api_client.force_scrape_task(selected_profile_task_id):
+                                st.success("✅ New scraping initiated!")
+                                st.session_state.monitor_profile_task_id = selected_profile_task_id
+                                st.rerun()
+                            else:
+                                st.error("❌ Failed to initiate scraping")
+                
+                with col2:
+                    st.info("💡 **Available Actions:**")
+                    st.caption("• View detailed profile analytics")
+                    st.caption("• Force immediate re-scraping")
+                    st.caption("• Update scraping interval")
+                    st.caption("• Monitor competitor performance")
         else:
             st.warning("⚠️ Unable to fetch task status.")
 

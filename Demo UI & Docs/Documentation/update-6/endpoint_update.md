@@ -119,7 +119,8 @@ Monitor the progress of background scraping operations in real-time.
     "latest_event": {
       "timestamp": 1754654979,
       "event_type": "profile_data_updated",
-      "scraped_posts_count": 12
+      "scraped_posts_count": 12,
+      "SOME OTHER FIELDS...": "...",
     }
   }
 }

@@ -45,6 +45,9 @@ if 'chat_history' not in st.session_state:
     st.session_state.chat_history = []
 if 'debug_mode' not in st.session_state:
     st.session_state.debug_mode = False
+if 'log_raw_streaming' not in st.session_state:
+    # Keep raw streaming chunk logging ON by default per user request
+    st.session_state.log_raw_streaming = True
 if 'api_logs' not in st.session_state:
     st.session_state.api_logs = []
 if 'local_user_data' not in st.session_state:
@@ -63,6 +66,10 @@ class APIClient:
     
     def set_debug(self, enabled: bool):
         self.debug_enabled = enabled
+
+    def set_log_raw_streaming(self, enabled: bool):
+        """Enable saving raw streaming chunks into the debug logs."""
+        self.log_raw_streaming = enabled
     
     def _sanitize_headers(self, headers: dict) -> dict:
         sanitized = dict(headers or {})
@@ -134,23 +141,7 @@ class APIClient:
                     if isinstance(target, dict):
                         if last_key not in target or not isinstance(target[last_key], list):
                             target[last_key] = []
-                        # Check for duplicates before appending (for chat messages)
-                        if last_key == "chats" and isinstance(value, dict):
-                            # Check if this message already exists to prevent duplicates
-                            existing_messages = target[last_key]
-                            is_duplicate = False
-                            for existing_msg in existing_messages:
-                                if (isinstance(existing_msg, dict) and 
-                                    existing_msg.get('role') == value.get('role') and
-                                    existing_msg.get('text') == value.get('text') and
-                                    existing_msg.get('type') == value.get('type')):
-                                    is_duplicate = True
-                                    break
-                            
-                            if not is_duplicate:
-                                target[last_key].append(value)
-                        else:
-                            target[last_key].append(value)
+                        target[last_key].append(value)
                     elif isinstance(target, list) and isinstance(last_key, int):
                         if last_key < len(target):
                             if not isinstance(target[last_key], list):
@@ -201,7 +192,7 @@ class APIClient:
             return True
         return self.load_project_into_cache(project_name)
     
-    def _make_request(self, endpoint: str, method: str = "POST", data: dict | None = None, stream: bool = False, timeout_seconds: int = 180):
+    def _make_request(self, endpoint: str, method: str = "POST", data: dict | None = None, stream: bool = False, timeout_seconds: int = 300):
         """Make HTTP request to the API (supports streaming)"""
         url = f"{self.base_url}{endpoint}"
         headers = {
@@ -234,16 +225,10 @@ class APIClient:
                     timeout=timeout_seconds,
                     stream=True,
                 )
-                if self.debug_enabled:
-                    self._append_log({
-                        'timestamp': datetime.now().isoformat(),
-                        'endpoint': endpoint,
-                        'method': method.upper(),
-                        'stream': True,
-                        'request': {'url': url, 'headers': req_headers, 'body': req_payload},
-                        'response': {'status_code': response.status_code, 'note': 'Streaming response returned to caller'},
-                        'duration_ms': int((_time.time() - start_time) * 1000),
-                    })
+                # Do not append any client-generated summary for streaming responses here.
+                # Raw server-sent JSON chunks will be logged verbatim in
+                # `process_streaming_response` when `debug_enabled` and
+                # `log_raw_streaming` are enabled.
                 return response
             else:
                 response = requests.request(
@@ -387,16 +372,49 @@ class APIClient:
         """
         aggregated_text = ""
         chunks_collected = []
+        raw_chunks = []
         assistant_message_added_via_mods = False
-        yielded_text_pieces = set()  # Track what text has already been yielded to prevent duplicates
         
         try:
             for chunk in response.iter_content(chunk_size=None, decode_unicode=True):
                 if not chunk:
                     continue
+                # Save raw chunk if enabled for later logging
+                try:
+                    raw_chunks.append(chunk)
+                except Exception:
+                    pass
+
+                # Log each raw chunk immediately if enabled
+                try:
+                    if getattr(self, 'debug_enabled', False) and getattr(self, 'log_raw_streaming', False):
+                        # Try to parse chunk as JSON for clearer logs; otherwise store raw.
+                        parsed = None
+                        try:
+                            parsed = json.loads(chunk)
+                        except Exception:
+                            parsed = None
+
+                        entry = {
+                            'timestamp': datetime.now().isoformat(),
+                            'endpoint': '/codvid-ai/ai/respond',
+                            'method': 'POST',
+                            'stream': True,
+                            'project': project_name,
+                        }
+                        if parsed is not None:
+                            entry['response'] = parsed
+                        else:
+                            entry['response'] = {'raw': chunk}
+
+                        self._append_log(entry)
+                except Exception:
+                    pass
+
                 try:
                     chunk_data = json.loads(chunk)
                 except Exception:
+                    # Skip non-json chunks but continue collecting raw data
                     continue
                 
                 if chunk_data.get("result"):
@@ -405,9 +423,8 @@ class APIClient:
                     
                     # Collect assistant text if provided
                     text_piece = resp.get("text") or resp.get("message", {}).get("text")
-                    if text_piece and text_piece not in yielded_text_pieces:
+                    if text_piece:
                         aggregated_text += text_piece
-                        yielded_text_pieces.add(text_piece)
                         # Yield the text chunk for real-time display
                         yield text_piece, False, None
 
@@ -434,9 +451,8 @@ class APIClient:
                                         if isinstance(m, dict) and m.get("role") == "assistant":
                                             assistant_message_added_via_mods = True
                                             txt = m.get("text")
-                                            if txt and txt not in yielded_text_pieces:
+                                            if txt:
                                                 aggregated_text += txt
-                                                yielded_text_pieces.add(txt)
                                                 # Yield the text chunk for real-time display
                                                 yield txt, False, None
                             except Exception:
@@ -446,6 +462,21 @@ class APIClient:
             yield f"Error processing response: {str(e)}", True, None
             return
         
+        # Optionally log raw streaming chunks for debugging/audit
+        try:
+            if getattr(self, 'debug_enabled', False) and getattr(self, 'log_raw_streaming', False):
+                self._append_log({
+                    'timestamp': datetime.now().isoformat(),
+                    'endpoint': '/codvid-ai/ai/respond',
+                    'method': 'POST',
+                    'stream': True,
+                    'project': project_name,
+                    'raw_streaming_chunks': raw_chunks,
+                    'raw_chunks_count': len(raw_chunks),
+                })
+        except Exception:
+            pass
+
         # Yield final result
         yield aggregated_text, True, data_mods if 'data_mods' in locals() else []
     
@@ -557,8 +588,9 @@ def main():
         if st.button("Clear API logs"):
             st.session_state.api_logs = []
             st.success("Cleared logs")
-    # Apply debug flag to client
+    # Apply debug and raw-streaming flags to client
     api_client.set_debug(st.session_state.debug_mode)
+    api_client.set_log_raw_streaming(st.session_state.log_raw_streaming)
 
     # Page routing
     if not st.session_state.authenticated:
