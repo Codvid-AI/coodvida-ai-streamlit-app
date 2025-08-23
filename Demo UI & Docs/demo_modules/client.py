@@ -308,12 +308,13 @@ def delete_account():
     return response.get_dict().get("result", False)
 
 
-def get_project_list():
+def get_project_list(verbose=False):
     """Get project list"""
     response = network.send(
         "/codvid-ai/project/get-project-list", session_token=session_token
     )
-    response.print()
+    if verbose:
+        response.print()
     return response.get_dict()["response"].get("project_list")
 
 

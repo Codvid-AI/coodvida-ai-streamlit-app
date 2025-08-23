@@ -8,10 +8,10 @@ from config import Config
 def display_sentiment_analysis(sentiment_summary):
     """Display sentiment analysis with visual bars like in the notebooks"""
     if not sentiment_summary or sentiment_summary['total_comments'] == 0:
-        st.info("No comments found to analyze.")
+        st.info("❌ No comments found to analyze.")
         return
     
-    st.markdown('<h3 class="main-header">Sentiment Analysis</h3>', unsafe_allow_html=True)
+    st.subheader("😊 Sentiment Analysis")
     
     col1, col2 = st.columns(2)
     with col1:
@@ -30,7 +30,7 @@ def display_sentiment_analysis(sentiment_summary):
             st.plotly_chart(fig, use_container_width=True)
     
     # Display sentiment distribution with visual bars (from notebooks)
-    st.markdown('<h4 class="main-header">Sentiment Distribution:</h4>', unsafe_allow_html=True)
+    st.subheader("📋 Sentiment Distribution:")
     sentiment_config = Config.SENTIMENT_CONFIG
     max_width = sentiment_config["max_bar_width"]
     emoji_map = sentiment_config["emoji_map"]
@@ -41,7 +41,7 @@ def display_sentiment_analysis(sentiment_summary):
         st.markdown(f"   {emoji} {sentiment.capitalize()}: {count} comments ({percentage:.1f}%)")
     
     # Create visual distribution bars
-    st.markdown('<h4 class="main-header">Visual Distribution:</h4>', unsafe_allow_html=True)
+    st.subheader("📊 Visual Distribution:")
     for sentiment, percentage in sentiment_summary['sentiment_percentages'].items():
         bar_width = int((percentage / 100) * max_width)
         bar = "█" * bar_width + "░" * (max_width - bar_width)
@@ -57,10 +57,10 @@ def show_profile_details(api_client):
     
     profile = st.session_state.current_profile
     
-    st.markdown(f'<h1 class="brand-title">@{profile["target_profile"]} Analytics</h1>', unsafe_allow_html=True)
+    st.title(f"📊 @{profile['target_profile']} Analytics")
     
     # Back button
-    if st.button("Back to Dashboard"):
+    if st.button("← Back to Dashboard"):
         st.session_state.current_page = 'dashboard'
         st.rerun()
     
@@ -69,7 +69,7 @@ def show_profile_details(api_client):
     # Profile info
     col1, col2 = st.columns([2, 1])
     with col1:
-        st.markdown('<h3 class="main-header">Profile Information</h3>', unsafe_allow_html=True)
+        st.subheader("Profile Information")
         st.markdown(f"**Username:** @{profile['target_profile']}")
         st.markdown(f"**Type:** {'Competitor' if profile.get('is_competitor') else 'Own Profile'}")
         st.markdown(f"**Status:** {profile.get('status', 'unknown')}")
@@ -83,10 +83,10 @@ def show_profile_details(api_client):
             st.markdown(f"**Next Scrape:** {next_scrape.strftime('%Y-%m-%d %H:%M')}")
     
     with col2:
-        st.markdown('<h3 class="main-header">Actions</h3>', unsafe_allow_html=True)
+        st.subheader("Actions")
         
         # Force scrape button
-        if st.button("Force Scrape Now", use_container_width=True):
+        if st.button("🔄 Force Scrape Now", use_container_width=True):
             with st.spinner("Starting scrape in background..."):
                 if api_client.force_scrape_task(profile['_id']):
                     st.success("Scraping initiated! Monitoring status...")
@@ -95,7 +95,7 @@ def show_profile_details(api_client):
                     st.error("Failed to initiate scraping")
         
         # Update scrape interval
-        with st.expander("Scrape Settings"):
+        with st.expander("⚙️ Scrape Settings"):
             current_interval = profile.get('scrape_interval_days', 2)
             new_interval = st.number_input(
                 "Scrape Interval (days)", 
@@ -115,7 +115,7 @@ def show_profile_details(api_client):
     st.markdown("---")
 
     # Always show current task status with enhanced logs (persists across reloads)
-    st.markdown('<h3 class="main-header">Task Status</h3>', unsafe_allow_html=True)
+    st.subheader("📊 Task Status")
     
     # Add logs count selector
     col1, col2 = st.columns([1, 3])
@@ -127,7 +127,7 @@ def show_profile_details(api_client):
             key=f"profile_logs_count_{profile['_id']}"
         )
     with col2:
-        if st.button("Refresh Status", key=f"refresh_profile_status_{profile['_id']}", type="secondary"):
+        if st.button("🔄 Refresh Status", key=f"refresh_profile_status_{profile['_id']}", type="secondary"):
             st.rerun()
     
     # Get enhanced status with selected logs count
@@ -135,7 +135,7 @@ def show_profile_details(api_client):
     
     if current_status:
         if current_status.get('is_processing'):
-            st.info("Task is processing...")
+            st.info("⏳ Task is processing...")
             
             # Display logs if available
             if current_status.get('logs'):
@@ -163,7 +163,7 @@ def show_profile_details(api_client):
                 latest_event = current_status.get('latest_event')
                 if latest_event:
                     st.markdown("---")
-                    st.markdown('<h4 class="main-header">Latest Event Summary</h4>', unsafe_allow_html=True)
+                    st.subheader("🎯 Latest Event Summary")
                     st.markdown(f"**Event:** {latest_event.get('event_type', 'Unknown')}")
                     st.markdown(f"**Time:** {datetime.fromtimestamp(latest_event.get('timestamp', 0)).strftime('%Y-%m-%d %H:%M:%S')}")
                     st.markdown(f"**Message:** {latest_event.get('message', 'No message')}")
@@ -176,9 +176,9 @@ def show_profile_details(api_client):
                         f"{datetime.fromtimestamp(latest_event.get('timestamp', 0)).strftime('%Y-%m-%d %H:%M:%S')}"
                     )
         else:
-            st.success("Task is idle/completed")
+            st.success("✅ Task is idle/completed")
     else:
-        st.warning("Unable to fetch task status.")
+        st.warning("⚠️ Unable to fetch task status.")
 
     # Backward-compat monitor flag: if set and now completed, clear it
     if hasattr(st.session_state, 'monitor_task_id'):
@@ -198,7 +198,7 @@ def show_profile_details(api_client):
         )
     
     if posts_list:
-        st.markdown('<h3 class="main-header">Recent Posts Analysis</h3>', unsafe_allow_html=True)
+        st.subheader("📈 Recent Posts Analysis")
         posts = posts_list
         
         # Create metrics
@@ -224,7 +224,7 @@ def show_profile_details(api_client):
             st.metric("Avg Likes/Post", f"{avg_likes:.0f}")
         
         # Posts table
-        st.markdown('<h4 class="main-header">Recent Posts</h4>', unsafe_allow_html=True)
+        st.subheader("📋 Recent Posts")
         posts_data = []
         for post in posts[:10]:  # Show last 10 posts
             caption = post.get('caption', '')
@@ -242,7 +242,7 @@ def show_profile_details(api_client):
             st.dataframe(df, use_container_width=True)
 
         # Per-post comments and sentiment details
-        st.markdown('<h4 class="main-header">Comments & Sentiment (per post)</h4>', unsafe_allow_html=True)
+        st.subheader("💬 Comments & Sentiment (per post)")
         emoji_map = Config.SENTIMENT_CONFIG["emoji_map"]
         for idx, post in enumerate(posts[:10]):
             caption_full = post.get('caption', '') or ''
@@ -302,7 +302,7 @@ def show_profile_details(api_client):
                         likes = c.get('likes_count', 0)
                         ts = c.get('timestamp')
                         ts_str = datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M') if ts else 'Unknown'
-                        st.markdown(f"{emoji} **@{username}** ({ts_str})  |  {likes} likes\n\n{text}")
+                        st.markdown(f"{emoji} **@{username}** ({ts_str})  |  ❤️ {likes}\n\n{text}")
                 else:
                     st.info("No top comments available for this post.")
         

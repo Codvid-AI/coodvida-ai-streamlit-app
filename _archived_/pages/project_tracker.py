@@ -14,41 +14,12 @@ def show_project_tracker(api_client):
     
     project = st.session_state.current_project
     
-    # Project selector and navigation tabs at the top
-    st.markdown('<h1 class="brand-title">Project Tracker</h1>', unsafe_allow_html=True)
-    
-    # Project selector and navigation
-    col1, col2, col3 = st.columns([2, 1, 1])
-    with col1:
-        # Project dropdown selector
-        projects = api_client.get_project_list()
-        if projects:
-            current_project_idx = projects.index(project) if project in projects else 0
-            selected_project = st.selectbox(
-                "Select Project:",
-                options=projects,
-                index=current_project_idx,
-                key="project_selector_tracker"
-            )
-            if selected_project != project:
-                st.session_state.current_project = selected_project
-                st.rerun()
-    
-    with col2:
-        if st.button("Chat", use_container_width=True):
-            st.session_state.current_page = 'project_chat'
-            st.rerun()
-    
-    with col3:
-        if st.button("Tracker", use_container_width=True, disabled=True):
-            pass  # Current tab
-    
-    st.markdown("---")
+    st.title(f"📊 {project} - Reel Tracker")
     
     # Navigation buttons
     col1, col2 = st.columns([1, 1])
     with col1:
-        if st.button("Back to Projects"):
+        if st.button("← Back to Projects"):
             st.session_state.current_page = 'projects'
             st.rerun()
     with col2:
@@ -57,18 +28,18 @@ def show_project_tracker(api_client):
             st.session_state["delete_confirm_tracker"] = False
         
         if not st.session_state["delete_confirm_tracker"]:
-            if st.button("Delete Project", type="secondary"):
+            if st.button("🗑️ Delete Project", type="secondary"):
                 st.session_state["delete_confirm_tracker"] = True
                 st.rerun()
         else:
             # Show confirmation dialog
-            st.warning(f"Are you sure you want to delete project '{project}'? This action cannot be undone!")
+            st.warning(f"⚠️ Are you sure you want to delete project '{project}'? This action cannot be undone!")
             col_confirm1, col_confirm2 = st.columns(2)
             with col_confirm1:
-                if st.button("Yes, Delete", key="confirm_delete_tracker"):
-                    st.info(f"Deleting project '{project}'...")
+                if st.button("✅ Yes, Delete", key="confirm_delete_tracker"):
+                    st.info(f"🗑️ Deleting project '{project}'...")
                     if api_client.delete_project(project):
-                        st.success(f"Project '{project}' deleted successfully!")
+                        st.success(f"✅ Project '{project}' deleted successfully!")
                         # Remove from local cache if it exists
                         try:
                             if project in st.session_state.local_user_data.get("projects", {}):
@@ -83,11 +54,11 @@ def show_project_tracker(api_client):
                             del st.session_state["delete_confirm_tracker"]
                         st.rerun()
                     else:
-                        st.error(f"Failed to delete project '{project}'")
+                        st.error(f"❌ Failed to delete project '{project}'")
                         st.session_state["delete_confirm_tracker"] = False
                         st.rerun()
             with col_confirm2:
-                if st.button("Cancel", key="cancel_delete_tracker"):
+                if st.button("❌ Cancel", key="cancel_delete_tracker"):
                     st.session_state["delete_confirm_tracker"] = False
                     st.rerun()
     
@@ -97,7 +68,7 @@ def show_project_tracker(api_client):
     reel_tasks = api_client.get_project_reel_tasks(project)
 
     # Always-visible status panel at the top
-    st.markdown('<h3 class="main-header">Current Reel Task Status</h3>', unsafe_allow_html=True)
+    st.subheader("⏱️ Current Reel Task Status")
     selected_task_id = st.session_state.get('monitor_reel_task_id')
     # If nothing selected yet, default to first task if available
     if not selected_task_id and reel_tasks:
@@ -138,7 +109,7 @@ def show_project_tracker(api_client):
                 key=f"reel_logs_count_{selected_task_id}"
             )
         with col2:
-            if st.button("Refresh Status", key=f"refresh_reel_status_{selected_task_id}", type="secondary"):
+            if st.button("🔄 Refresh Status", key=f"refresh_reel_status_{selected_task_id}", type="secondary"):
                 st.rerun()
         
         # Get enhanced status with selected logs count
@@ -196,7 +167,7 @@ def show_project_tracker(api_client):
     st.markdown("---")
 
     # Add new reel to track
-    st.markdown('<h3 class="main-header">Add Reel to Track</h3>', unsafe_allow_html=True)
+    st.header("➕ Add Reel to Track")
     with st.expander("Add Instagram Reel", expanded=False):
         with st.form("add_reel_form"):
             reel_url = st.text_input(
@@ -206,7 +177,7 @@ def show_project_tracker(api_client):
             )
             
             # Add scraping interval settings
-            st.markdown('<h4 class="main-header">Scraping Settings</h4>', unsafe_allow_html=True)
+            st.subheader("⚙️ Scraping Settings")
             scrape_interval = st.number_input(
                 "Scrape Interval (days)", 
                 min_value=0.5, 
@@ -216,7 +187,7 @@ def show_project_tracker(api_client):
                 help="How often to automatically scrape this reel (0.5 = 12 hours, 1 = daily, 7 = weekly)"
             )
             
-            st.caption(f"Reel will be scraped every {scrape_interval} days")
+            st.caption(f"📅 Reel will be scraped every {scrape_interval} days")
             
             submit = st.form_submit_button("Add Reel to Track")
             
@@ -224,15 +195,15 @@ def show_project_tracker(api_client):
                 if reel_url:
                     task_id = api_client.create_reel_tracking_task(project, reel_url, scrape_interval)
                     if task_id:
-                        st.success(f"Added reel to tracking with {scrape_interval}-day interval")
+                        st.success(f"✅ Added reel to tracking with {scrape_interval}-day interval")
                         st.rerun()
                     else:
-                        st.error("Failed to add reel to tracking")
+                        st.error("❌ Failed to add reel to tracking")
                 else:
                     st.error("Please enter a reel URL")
     
     # Display existing reel tasks
-    st.markdown('<h3 class="main-header">Tracked Reels</h3>', unsafe_allow_html=True)
+    st.header("📊 Tracked Reels")
 
     if not reel_tasks:
         st.info("No reels are being tracked. Add your first reel above!")
@@ -246,7 +217,7 @@ def show_project_tracker(api_client):
                 # Reel info
                 col1, col2 = st.columns([3, 1])
                 with col1:
-                    st.markdown(f"**Reel ID:** {task.get('reel_id', 'N/A')}")
+                    st.markdown(f"**🎬 Reel ID:** {task.get('reel_id', 'N/A')}")
                     st.caption(f"**URL:** {task.get('reel_url', 'N/A')}")
                     
                     # Show current interval
@@ -277,7 +248,7 @@ def show_project_tracker(api_client):
                 
                 with col2:
                     # Actions
-                    if st.button("Force Scrape", key=f"force_scrape_reel_{task['_id']}"):
+                    if st.button("🔄 Force Scrape", key=f"force_scrape_reel_{task['_id']}"):
                         with st.spinner("Starting reel scrape in background..."):
                             if api_client.force_scrape_reel_task(task['_id']):
                                 st.success("Scraping initiated! Monitoring status...")
@@ -285,12 +256,12 @@ def show_project_tracker(api_client):
                             else:
                                 st.error("Failed to scrape")
                     
-                    if st.button("Update Interval", key=f"update_reel_interval_{task['_id']}"):
+                    if st.button("⚙️ Update Interval", key=f"update_reel_interval_{task['_id']}"):
                         st.session_state.editing_reel_task_id = task['_id']
                         st.session_state.editing_reel_current_interval = current_interval
                         st.rerun()
                     
-                    if st.button("Delete", key=f"delete_reel_{task['_id']}"):
+                    if st.button("🗑️ Delete", key=f"delete_reel_{task['_id']}"):
                         if hasattr(api_client, 'delete_reel_task') and api_client.delete_reel_task(task['_id']):
                             st.success("Reel task deleted!")
                             st.rerun()
@@ -313,7 +284,7 @@ def show_project_tracker(api_client):
         
         # Interval update form for reels
         if hasattr(st.session_state, 'editing_reel_task_id'):
-            st.markdown('<h4 class="main-header">Update Reel Scraping Interval</h4>', unsafe_allow_html=True)
+            st.subheader("⚙️ Update Reel Scraping Interval")
             with st.form("update_reel_interval_form"):
                 new_interval = st.number_input(
                     "New Scrape Interval (days)",
@@ -326,24 +297,24 @@ def show_project_tracker(api_client):
                 
                 col1, col2 = st.columns(2)
                 with col1:
-                    if st.form_submit_button("Update Interval"):
+                    if st.form_submit_button("✅ Update Interval"):
                         if api_client.update_scrape_interval(st.session_state.editing_reel_task_id, new_interval):
-                            st.success(f"Updated reel interval to {new_interval} days")
+                            st.success(f"✅ Updated reel interval to {new_interval} days")
                             del st.session_state.editing_reel_task_id
                             del st.session_state.editing_reel_current_interval
                             st.rerun()
                         else:
-                            st.error("Failed to update interval")
+                            st.error("❌ Failed to update interval")
                 
                 with col2:
-                    if st.form_submit_button("Cancel"):
+                    if st.form_submit_button("❌ Cancel"):
                         del st.session_state.editing_reel_task_id
                         del st.session_state.editing_reel_current_interval
                         st.rerun()
         
         # Show detailed reel data
         if reel_tasks:
-            st.markdown('<h4 class="main-header">Reel Performance</h4>', unsafe_allow_html=True)
+            st.subheader("📈 Reel Performance")
             
             # Create performance chart
             performance_data = []
@@ -385,7 +356,7 @@ def show_project_tracker(api_client):
 
     # Live reel task status monitor (always visible if a task is selected)
     st.markdown("---")
-    st.markdown('<h4 class="main-header">Current Reel Task Status</h4>', unsafe_allow_html=True)
+    st.subheader("⏱️ Current Reel Task Status")
     selected_task_id = st.session_state.get('monitor_reel_task_id')
     if not selected_task_id and reel_tasks:
         # Default to first task to show status
