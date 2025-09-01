@@ -847,21 +847,21 @@ class APIClient:
     def create_tracking_task(self, target_profile: str, is_competitor: bool = False) -> Optional[str]:
         """Create Instagram tracking task"""
         data = {"target_profile": target_profile, "is_competitor": is_competitor}
-        result = self._make_request("/codvid-ai/ig-tracking/create_task", data=data)
+        result = self._make_request("/codvid-ai/ig-tracking/create_profile_tracking_task", data=data)
         if result and result.get("result"):
             return result.get("response", {}).get("task_id")
         return None
     
     def get_tracking_tasks(self) -> List[Dict]:
         """Get all tracking tasks"""
-        result = self._make_request("/codvid-ai/ig-tracking/get_tasks", method="GET")
+        result = self._make_request("/codvid-ai/ig-tracking/get_profile_tracking_tasks", method="GET")
         if result and result.get("result"):
             return result.get("response", {}).get("tasks", [])
         return []
     
     def get_task_details(self, task_id: str) -> Optional[Dict]:
         """Get detailed task information"""
-        result = self._make_request(f"/codvid-ai/ig-tracking/get_task/{task_id}", method="GET")
+        result = self._make_request(f"/codvid-ai/ig-tracking/get_profile_tracking_task/{task_id}", method="GET")
         if result and result.get("result"):
             return result.get("response", {}).get("task")
         return None
@@ -870,7 +870,7 @@ class APIClient:
         """Force scrape a task"""
         # Long-running job: allow up to 15 minutes
         result = self._make_request(
-            f"/codvid-ai/ig-tracking/force_scrape/{task_id}",
+            f"/codvid-ai/ig-tracking/force_scrape_profile_tracking_task/{task_id}",
             method="POST",
             timeout_seconds=900,
         )
@@ -878,13 +878,13 @@ class APIClient:
     
     def delete_tracking_task(self, task_id: str) -> bool:
         """Delete a tracking task"""
-        result = self._make_request(f"/codvid-ai/ig-tracking/delete_task/{task_id}", method="DELETE")
+        result = self._make_request(f"/codvid-ai/ig-tracking/delete_profile_tracking_task/{task_id}", method="DELETE")
         return result and result.get("result")
     
     def update_scrape_interval(self, task_id: str, interval_days: float) -> bool:
         """Update scrape interval for a task"""
         data = {"scrape_interval_days": interval_days}
-        result = self._make_request(f"/codvid-ai/ig-tracking/update_scrape_interval/{task_id}", method="PUT", data=data)
+        result = self._make_request(f"/codvid-ai/ig-tracking/update_profile_tracking_scrape_interval/{task_id}", method="PUT", data=data)
         return result and result.get("result")
     
     def get_sentiment_summary(self, task_id: str) -> Optional[Dict]:
@@ -940,7 +940,7 @@ class APIClient:
             logs_count = 100
             
         # Build URL with query parameter
-        url = f"/codvid-ai/ig-tracking/task_status/{task_id}"
+        url = f"/codvid-ai/ig-tracking/profile_tracking_task_status/{task_id}"
         if logs_count != 10:  # Only add parameter if not default
             url += f"?logs_count={logs_count}"
             
@@ -955,7 +955,7 @@ def main():
     check_session_timeout()
     
     # Get API configuration
-    api_url = Config.get_api_url()
+    api_url = Config.get_api_url("local")
     api_client = APIClient(api_url)
     
     # Set session token if available

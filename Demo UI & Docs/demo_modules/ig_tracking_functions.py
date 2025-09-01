@@ -4,7 +4,7 @@ from demo_modules import network, client
 def create_tracking_task(target_profile: str, is_competitor: bool = False):
     """Create a new Instagram tracking task"""
     response = network.send(
-        "/codvid-ai/ig-tracking/create_task",
+        "/codvid-ai/ig-tracking/create_profile_tracking_task",
         content={
             "target_profile": target_profile,
             "is_competitor": is_competitor
@@ -26,7 +26,7 @@ def create_tracking_task(target_profile: str, is_competitor: bool = False):
 def get_tracking_tasks(verbose=False):
     """Get all tracking tasks for the current user"""
     response = network.send(
-        "/codvid-ai/ig-tracking/get_tasks",
+        "/codvid-ai/ig-tracking/get_profile_tracking_tasks",
         session_token=client.session_token,
         method="GET"  # Fixed: Use GET method
     )
@@ -45,7 +45,7 @@ def get_tracking_tasks(verbose=False):
 def get_task_details(task_id: str, verbose=False):
     """Get detailed information about a specific tracking task"""
     response = network.send(
-        f"/codvid-ai/ig-tracking/get_task/{task_id}",
+        f"/codvid-ai/ig-tracking/get_profile_tracking_task/{task_id}",
         session_token=client.session_token,
         method="GET"  # Fixed: Use GET method
     )
@@ -62,7 +62,7 @@ def force_scrape_task(task_id: str):
     """Force immediate scraping of a tracking task"""
     print(f"🔄 Initiating scrape for task {task_id}...")
     response = network.send(
-        f"/codvid-ai/ig-tracking/force_scrape/{task_id}",
+        f"/codvid-ai/ig-tracking/force_scrape_profile_tracking_task/{task_id}",
         session_token=client.session_token,
         method="POST"  # Correct: Use POST method
     )
@@ -93,7 +93,7 @@ def get_sentiment_summary(task_id: str):
 def delete_tracking_task(task_id: str):
     """Delete a tracking task"""
     response = network.send(
-        f"/codvid-ai/ig-tracking/delete_task/{task_id}",
+        f"/codvid-ai/ig-tracking/delete_profile_tracking_task/{task_id}",
         session_token=client.session_token,
         method="DELETE"  # Fixed: Use DELETE method
     )

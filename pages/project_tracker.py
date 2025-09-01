@@ -4,6 +4,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import time
 from datetime import datetime
+from config import Config
 
 def show_project_tracker(api_client):
     """Show project reel tracking interface"""
@@ -302,14 +303,92 @@ def show_project_tracker(api_client):
                 if reel_data:
                     col1, col2, col3, col4 = st.columns(4)
                     with col1:
-                        st.metric("Likes", f"{reel_data.get('likes', 0):,}")
+                        likes = reel_data.get('likes', 0) or 0
+                        st.metric("Likes", f"{likes:,}")
                     with col2:
-                        st.metric("Comments", f"{reel_data.get('comments', 0):,}")
+                        comments = reel_data.get('comments', 0) or 0
+                        st.metric("Comments", f"{comments:,}")
                     with col3:
-                        st.metric("Views", f"{reel_data.get('views', 0):,}")
+                        views = reel_data.get('views', 0) or 0
+                        st.metric("Views", f"{views:,}")
                     with col4:
-                        sentiment = reel_data.get('sentiment_analysis', {}).get('overall_sentiment', 'neutral')
+                        sentiment = reel_data.get('sentiment_analysis', {}).get('overall_sentiment', 'neutral') or 'neutral'
                         st.metric("Sentiment", sentiment.title())
+                    
+                    # Show detailed sentiment analysis if available
+                    sentiment_analysis = reel_data.get('sentiment_analysis', {})
+                    if sentiment_analysis:
+                        # Safely get sentiment values and handle None values
+                        positive = sentiment_analysis.get('positive', 0) or 0
+                        negative = sentiment_analysis.get('negative', 0) or 0
+                        neutral = sentiment_analysis.get('neutral', 0) or 0
+                        
+                        # Only show if any sentiment values are greater than 0
+                        if any(v > 0 for v in [positive, negative, neutral]):
+                            st.markdown("**Sentiment Breakdown:**")
+                            col1, col2, col3 = st.columns(3)
+                            with col1:
+                                st.metric("Positive", positive)
+                            with col2:
+                                st.metric("Neutral", neutral)
+                            with col3:
+                                st.metric("Negative", negative)
+                    
+                    # Show top comments if available
+                    top_comments = reel_data.get('top_comments', [])
+                    if top_comments:
+                        st.markdown("**Top Comments:**")
+                        with st.expander(f"View {len(top_comments)} comments", expanded=False):
+                            emoji_map = Config.SENTIMENT_CONFIG["emoji_map"]
+                            
+                            for i, comment in enumerate(top_comments, 1):
+                                if isinstance(comment, dict):
+                                    # Handle structured comment objects
+                                    comment_text = comment.get('text', comment.get('comment', str(comment)))
+                                    author = comment.get('author', comment.get('username', 'Unknown'))
+                                    likes = comment.get('likes', comment.get('like_count', 0)) or 0
+                                    sentiment = (comment.get('sentiment') or 'neutral').lower()
+                                    
+                                    # Get sentiment emoji
+                                    sentiment_emoji = emoji_map.get(sentiment, "😐")
+                                    
+                                    # Display comment with sentiment
+                                    st.markdown(f"{sentiment_emoji} **{i}. @{author}** ({sentiment.capitalize()})")
+                                    st.markdown(f"{comment_text}")
+                                    if likes > 0:
+                                        st.caption(f"❤️ {likes} likes")
+                                else:
+                                    # Handle simple string comments
+                                    st.markdown(f"😐 **{i}.** {comment}")
+                                
+                                if i < len(top_comments):
+                                    st.markdown("---")
+                    elif (reel_data.get('comments', 0) or 0) > 0:
+                        st.caption("Comments were scraped but detailed comment data is not available")
+                    
+                    # Show caption if available
+                    caption = reel_data.get('caption', '')
+                    if caption and caption.strip():
+                        st.markdown("**Caption:**")
+                        with st.expander("View caption", expanded=False):
+                            st.markdown(caption)
+                    
+                    # Show hashtags and mentions if available
+                    hashtags = reel_data.get('hashtags', [])
+                    mentions = reel_data.get('mentions', [])
+                    
+                    if hashtags or mentions:
+                        col1, col2 = st.columns(2)
+                        if hashtags:
+                            with col1:
+                                st.markdown("**Hashtags:**")
+                                hashtag_text = " ".join([f"#{tag}" for tag in hashtags])
+                                st.caption(hashtag_text)
+                        if mentions:
+                            with col2:
+                                st.markdown("**Mentions:**")
+                                mention_text = " ".join([f"@{mention}" for mention in mentions])
+                                st.caption(mention_text)
         
         # Interval update form for reels
         if hasattr(st.session_state, 'editing_reel_task_id'):
@@ -352,9 +431,9 @@ def show_project_tracker(api_client):
                     reel_data = task['reel_data']
                     performance_data.append({
                         'Reel ID': task.get('reel_id', 'Unknown'),
-                        'Likes': reel_data.get('likes', 0),
-                        'Comments': reel_data.get('comments', 0),
-                        'Views': reel_data.get('views', 0)
+                        'Likes': reel_data.get('likes', 0) or 0,
+                        'Comments': reel_data.get('comments', 0) or 0,
+                        'Views': reel_data.get('views', 0) or 0
                     })
             
             if performance_data:
@@ -381,7 +460,147 @@ def show_project_tracker(api_client):
                 )
                 
                 fig.update_layout(height=400, showlegend=False)
-                st.plotly_chart(fig, use_container_width=True) 
+                st.plotly_chart(fig, use_container_width=True)
+            
+            # Show sentiment summary with visual bars
+            st.markdown('<h4 class="main-header">Sentiment Summary</h4>', unsafe_allow_html=True)
+            
+            # Collect individual comment sentiments for detailed breakdown
+            comment_sentiment_counts = {"positive": 0, "negative": 0, "neutral": 0}
+            total_individual_comments = 0
+            
+            for task in reel_tasks:
+                reel_data = task.get('reel_data', {})
+                if reel_data:
+                    top_comments = reel_data.get('top_comments', [])
+                    for comment in top_comments:
+                        if isinstance(comment, dict):
+                            sentiment = (comment.get('sentiment') or 'neutral').lower()
+                            if sentiment in comment_sentiment_counts:
+                                comment_sentiment_counts[sentiment] += 1
+                            else:
+                                comment_sentiment_counts['neutral'] += 1
+                        else:
+                            comment_sentiment_counts['neutral'] += 1
+                        total_individual_comments += 1
+            
+            if total_individual_comments > 0:
+                # Calculate percentages
+                sentiment_percentages = {k: (v / total_individual_comments) * 100 for k, v in comment_sentiment_counts.items()}
+                
+                # Display sentiment summary with visual bars
+                emoji_map = Config.SENTIMENT_CONFIG["emoji_map"]
+                max_bar_width = Config.SENTIMENT_CONFIG["max_bar_width"]
+                
+                col1, col2 = st.columns([1, 1])
+                
+                with col1:
+                    st.markdown("**Comment Sentiment Breakdown:**")
+                    for sentiment in ["positive", "neutral", "negative"]:
+                        count = comment_sentiment_counts[sentiment]
+                        percentage = sentiment_percentages[sentiment]
+                        emoji = emoji_map.get(sentiment, "😐")
+                        st.markdown(f"{emoji} {sentiment.capitalize()}: {count} comments ({percentage:.1f}%)")
+                
+                with col2:
+                    st.markdown("**Visual Distribution:**")
+                    for sentiment in ["positive", "neutral", "negative"]:
+                        percentage = sentiment_percentages[sentiment]
+                        bar_width = int((percentage / 100) * max_bar_width)
+                        bar = "█" * bar_width + "░" * (max_bar_width - bar_width)
+                        emoji = emoji_map.get(sentiment, "😐")
+                        st.markdown(f"{emoji} `{bar}` {percentage:.1f}%")
+            else:
+                st.info("No individual comment sentiment data available yet.")
+            
+            st.markdown("---")
+            
+            # Show aggregated comments section
+            st.markdown('<h4 class="main-header">All Comments Overview</h4>', unsafe_allow_html=True)
+            
+            all_comments = []
+            total_sentiment_positive = 0
+            total_sentiment_negative = 0
+            total_sentiment_neutral = 0
+            
+            for task in reel_tasks:
+                reel_data = task.get('reel_data', {})
+                if reel_data:
+                    # Collect comments
+                    top_comments = reel_data.get('top_comments', [])
+                    reel_id = task.get('reel_id', 'Unknown')
+                    
+                    for comment in top_comments:
+                        comment_data = {
+                            'reel_id': reel_id,
+                            'reel_url': task.get('reel_url', ''),
+                        }
+                        
+                        if isinstance(comment, dict):
+                            comment_data.update({
+                                'text': comment.get('text', comment.get('comment', str(comment))),
+                                'author': comment.get('author', comment.get('username', 'Unknown')),
+                                'likes': comment.get('likes', comment.get('like_count', 0)) or 0,
+                                'sentiment': (comment.get('sentiment') or 'neutral').lower()
+                            })
+                        else:
+                            comment_data.update({
+                                'text': str(comment),
+                                'author': 'Unknown',
+                                'likes': 0,
+                                'sentiment': 'neutral'
+                            })
+                        
+                        all_comments.append(comment_data)
+                    
+                    # Aggregate sentiment - safely handle None values
+                    sentiment_analysis = reel_data.get('sentiment_analysis', {})
+                    total_sentiment_positive += sentiment_analysis.get('positive', 0) or 0
+                    total_sentiment_negative += sentiment_analysis.get('negative', 0) or 0
+                    total_sentiment_neutral += sentiment_analysis.get('neutral', 0) or 0
+            
+            if all_comments:
+                col1, col2 = st.columns([2, 1])
+                
+                with col1:
+                    st.markdown(f"**Total Comments Collected:** {len(all_comments)}")
+                    
+                    # Show sample of comments
+                    with st.expander(f"View all {len(all_comments)} comments", expanded=False):
+                        # Sort by likes if available
+                        sorted_comments = sorted(all_comments, key=lambda x: x.get('likes', 0) or 0, reverse=True)
+                        emoji_map = Config.SENTIMENT_CONFIG["emoji_map"]
+                        
+                        for i, comment in enumerate(sorted_comments, 1):
+                            sentiment = comment.get('sentiment', 'neutral')
+                            sentiment_emoji = emoji_map.get(sentiment, "😐")
+                            
+                            st.markdown(f"{sentiment_emoji} **{i}. @{comment['author']}** (from {comment['reel_id']}) - {sentiment.capitalize()}")
+                            st.markdown(comment['text'])
+                            if (comment['likes'] or 0) > 0:
+                                st.caption(f"❤️ {comment['likes']} likes")
+                            st.markdown("---")
+                
+                with col2:
+                    if total_sentiment_positive + total_sentiment_negative + total_sentiment_neutral > 0:
+                        st.markdown("**Overall Sentiment:**")
+                        st.metric("Positive", total_sentiment_positive)
+                        st.metric("Neutral", total_sentiment_neutral)  
+                        st.metric("Negative", total_sentiment_negative)
+                        
+                        # Calculate percentages
+                        total_sentiment = total_sentiment_positive + total_sentiment_negative + total_sentiment_neutral
+                        if total_sentiment > 0:
+                            pos_pct = (total_sentiment_positive / total_sentiment) * 100
+                            neu_pct = (total_sentiment_neutral / total_sentiment) * 100
+                            neg_pct = (total_sentiment_negative / total_sentiment) * 100
+                            
+                            st.markdown("**Sentiment Distribution:**")
+                            st.caption(f"😊 Positive: {pos_pct:.1f}%")
+                            st.caption(f"😐 Neutral: {neu_pct:.1f}%")
+                            st.caption(f"😞 Negative: {neg_pct:.1f}%")
+            else:
+                st.info("No comments available yet. Comments will appear here after reels are scraped.") 
 
     # Live reel task status monitor (always visible if a task is selected)
     st.markdown("---")
