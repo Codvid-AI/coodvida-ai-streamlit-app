@@ -955,7 +955,7 @@ def main():
     check_session_timeout()
     
     # Get API configuration
-    api_url = Config.get_api_url("local")
+    api_url = Config.get_api_url()
     api_client = APIClient(api_url)
     
     # Set session token if available
